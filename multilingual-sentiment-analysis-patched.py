@@ -60,29 +60,32 @@ def connect_to_db():
         print(f"Database connection error: {e}")
         return None
 
-def update_database(df):
-    
-    print(f"Updating {len(df)} records in database...")
-
+def update_database(valid_df):
+    print(f"Updating {len(valid_df)} records in database...")
     conn = connect_to_db()
     if not conn:
         return
-
     updates_count = 0
     batch_size = 100
-
+    required_columns = ['id', 'detected_language', 'sentiment_label', 'sentiment_score', 'is_question', 'question_indicators', 'is_spam']
+    missing = [col for col in required_columns if col not in valid_df.columns]
+    if missing:
+        print(f"ERROR: Missing columns for DB update: {missing}")
+        return
     try:
         # Prepare update data
         update_data = []
-        for _, row in df.iterrows():
+        for _, row in valid_df.iterrows():
             update_data.append((
                 row['detected_language'],
-                row['sentiment_label'] if row['sentiment_label'] is not None else None,
+                row['sentiment_label'] ,
                 #float(row['sentiment_score']),
-                row['sentiment_score'] if row['sentiment_score'] is not None else None,
-                row.get('is_question', False), 
+                float(row['sentiment_score']) ,
+                #row.get('is_question', False), 
+                bool(row['is_question']),
                 json.dumps(row.get('question_indicators', {})), 
-                row.get('is_spam', False),
+                #row.get('is_spam', False),
+                bool(row['is_spam']),
                 row['id']
             ))
         with conn:
@@ -103,7 +106,7 @@ def update_database(df):
                         )
                         updates_count += len(batch)
                         #updates_count += cursor.rowcount
-                        print(f"Updated {updates_count}/{len(df)} records...")
+                        print(f"Updated {updates_count}/{len(valid_df)} records...")
                     except Exception as e:
                         print(f"Error updating batch starting at record {i}: {e}")
                         print(f"Problematic batch data: {batch}")
@@ -197,16 +200,44 @@ def is_valid_comment(text):
     
     # minimum meaningful content
     cleaned = clean_text(text)
-    return len(cleaned) > 1  # At least 2 characters after cleaning
+    return len(cleaned) >= 2  # At least 2 characters after cleaning
+
+def process_comments(df):
+    # Mark spam first
+    df['is_spam'] = df['comment_message'].apply(is_spam_comment)
+    
+    # Clean all comments (including spam for debugging)
+    df['cleaned_message'] = df['comment_message'].apply(clean_text)
+    
+    # Validate (spam comments automatically invalid)
+    df['is_valid'] = ~df['is_spam'] & df['comment_message'].apply(is_valid_comment)
+    
+    # Separate streams
+    spam_df = df[df['is_spam']]
+    valid_df = df[df['is_valid']]
+    invalid_df = df[~df['is_spam'] & ~df['is_valid']]
+    
+    print(f"Classification Results:")
+    print(f"- Valid comments: {len(valid_df)}")
+    print(f"- Spam comments: {len(spam_df)}")
+    print(f"- Invalid (empty/broken): {len(invalid_df)}")
+    
+    return valid_df
 
 def clean_text(text):
+    '''
     if is_spam_comment(text):
         return {'label': 'neutral', 'score': 0.5, 'spam': True}
 
     if pd.isna(text) or not isinstance(text, str):
         print(f"Invalid text: {text}")
         return ""
+    '''
+    if pd.isna(text) or not isinstance(text, str):
+        return ""
     
+    # Preserve emojis
+    emoji_chars = [c for c in text if is_emoji(c)]
     original = text
     # Normalize Arabic characters
     text = re.sub(r'[إأٱآا]', 'ا', text)
@@ -226,6 +257,9 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"[^\w\s.,!?;:\"'\/\\()\[\]{}\-_+=*&^%$#@<>|~`؟،؛]", "", text)
 
+    # If we stripped everything but had emojis, restore them
+    if not text.strip() and emoji_chars:
+        return ' '.join(emoji_chars)
     #print(f"Cleaning transformation:\nOriginal: {original}\nCleaned: {text}")
 
     return text.strip()
@@ -397,6 +431,7 @@ def load_sentiment_maps():
 def is_emoji(char):
 
     return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
+
 '''
 def is_spam_comment(text: str) -> bool:
     if not isinstance(text, str) or not text.strip():
@@ -1309,11 +1344,18 @@ def analyze_facebook_comments():
         }
     }
 
+    print("Loading sentiment models...")
+    sentiment_models = load_sentiment_models()
+    prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
+    analyze_sentiment.prayer_terms_map = prayer_terms_map
+    analyze_sentiment.emoji_sentiment_map = emoji_sentiment_map
+
     batch_count = 0
     while True:
         batch_count += 1
         print(f"\nProcessing batch {batch_count}...")
         df = extract_comments()
+        
         if df is None or len(df) == 0:
             empty_batch_count += 1
             print(f"No comments extracted (null or empty). Empty batch count: {empty_batch_count}/{max_empty_batches}")
@@ -1325,14 +1367,17 @@ def analyze_facebook_comments():
         # Data cleaning
         df['comment_message'] = df['comment_message'].replace('[null]', np.nan)
         # hna i can add more cleaning if needed
-        df['comment_message'] = df['comment_message'].apply(clean_text).str.lower()
+        df['is_spam'] = df['comment_message'].apply(is_spam_comment)
+        df['cleaned_message'] = df['comment_message'].apply(clean_text).str.lower()
         #df = df[df['comment_message'].str.strip().str.len() > 0]
-        df = df[df['comment_message'].apply(lambda x: isinstance(x, str) and (x.strip() != '' or any(is_emoji(c) for c in x)))]
-        
- 
-
-        valid_comments = len(df)
-        print(f"[Batch {batch_count}] Extracted: {len(df)} | Valid after cleaning: {valid_comments}")
+        #df = df[df['comment_message'].apply(lambda x: isinstance(x, str) and (x.strip() != '' or any(is_emoji(c) for c in x)))]
+        df['is_valid'] = ~df['is_spam'] & df['comment_message'].apply(is_valid_comment)
+        df['is_valid'] = ~df['is_spam'] & df['cleaned_message'].apply(
+            lambda x: isinstance(x, str) and (x.strip() != '' or any(is_emoji(c) for c in x))
+        )
+        #valid_comments = len(df)
+        valid_df = df[df['is_valid']].copy()
+        #print(f"[Batch {batch_count}] Extracted: {len(df)} | Valid after cleaning: {valid_comments}")
         print(f"Extracted {len(df)} comments from database")
 
         '''if len(df[df['comment_message'].str.strip().astype(bool)]) == 0:
@@ -1343,6 +1388,7 @@ def analyze_facebook_comments():
             continue
         else:
             empty_batch_count = 0
+        '''
         '''
         if valid_comments == 0:
             empty_batch_count += 1
@@ -1357,61 +1403,95 @@ def analyze_facebook_comments():
         #valid_comments = df['comment_message'].apply(lambda x: len(str(x).strip()) > 0).sum()
         print(f"Valid comments in batch: {len(df)}")
         print(f"Valid comments with content: {valid_comments}")
-        
+        '''
+        if len(valid_df) == 0:
+            empty_batch_count += 1
+            print(f"No valid comments in batch {batch_count} ({empty_batch_count}/{max_empty_batches})")
+            if empty_batch_count >= max_empty_batches:
+                print("Stopping - too many consecutive batches with no valid comments")
+                break
+            continue
+        else:
+            empty_batch_count = 0
+
+        print(f"Processing {len(valid_df)} valid comments (of {len(df)} total)")
+
+        # Language detection
+        print("Detecting languages...")
+        valid_df['detected_language'] = valid_df['cleaned_message'].apply(detect_language)
+
+        '''
         # Language detection
         print("Detecting languages...")
         df['detected_language'] = df['comment_message'].apply(detect_language)
-       
+        '''
         # Question detection
         print("Detecting questions...")
-        question_results = df['comment_message'].apply(detect_questions)
-        df['is_question'] = [result[0] for result in question_results]
-        df['question_indicators'] = [result[1] for result in question_results]
+        #question_results = df['comment_message'].apply(detect_questions)
+        question_results = valid_df['cleaned_message'].apply(detect_questions)
+        valid_df['is_question'] = [result[0] for result in question_results]
+        valid_df['question_indicators'] = [result[1] for result in question_results]
         
         # Sentiment analysis
-        print("Loading sentiment models...")
-        sentiment_models = load_sentiment_models()
-        prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
-        analyze_sentiment.prayer_terms_map = prayer_terms_map
-        analyze_sentiment.emoji_sentiment_map = emoji_sentiment_map
-        
+       
         print("Analyzing sentiment...")
-        df['sentiment'] = df.apply(
-            lambda row: analyze_sentiment(row['comment_message'], row['detected_language'], sentiment_models), 
+        valid_df['sentiment'] = valid_df.apply(
+            lambda row: analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models), 
             axis=1
         )
+        '''
         df['sentiment_label'] = df['sentiment'].apply(lambda x: x['label'].lower() if isinstance(x, dict) else 'neutral')
         df['sentiment_score'] = df['sentiment'].apply(lambda x: x['score'] if isinstance(x, dict) else 0.5)
         df['is_spam'] = df['sentiment'].apply(lambda x: x.get('spam', False) if isinstance(x, dict) else False)
         df.loc[df['is_spam'], 'sentiment_label'] = None
         df.loc[df['is_spam'], 'sentiment_score'] = None 
     #   df_filtered = df[~df['is_spam']]
+        '''
+        # Extract sentiment results
+        valid_df['sentiment_label'] = valid_df['sentiment'].apply(
+            lambda x: x['label'].lower() if isinstance(x, dict) else 'neutral'
+        )
+        valid_df['sentiment_score'] = valid_df['sentiment'].apply(
+            lambda x: x['score'] if isinstance(x, dict) else 0.5
+        )
+        print("DEBUG: Columns in final valid_DF:", valid_df.columns.tolist())
+        print("DEBUG: Sample row:", valid_df.iloc[0].to_dict())
 
-        update_database(df)
+        # Merge results back to original dataframe
+        df.update(valid_df)
+        
+        # Ensure spam comments are properly marked
+        df.loc[df['is_spam'], 'sentiment_label'] = None
+        df.loc[df['is_spam'], 'sentiment_score'] = None
+
+        update_database(valid_df)
+        print("DEBUG: Columns in final DF:", df.columns.tolist())
+        print("DEBUG: Sample row:", df.iloc[0].to_dict())
 
         # Topic extraction
         print("Extracting topics by language...")
         topics_by_language = {}
         for lang in ['en', 'fr', 'ar', 'darija']:
-            if lang in df['detected_language'].unique():
-                topics = extract_topics(df[df['detected_language'] == lang], lang)
-                if topics:
-                    topics_by_language[lang] = topics
-                    print(f"  Extracted {len(topics)} topics for {lang}")
-        
+            if lang in valid_df['detected_language'].unique():
+                    lang_comments = valid_df[valid_df['detected_language'] == lang]
+                    topics = extract_topics(lang_comments, lang)
+                    if topics:
+                        topics_by_language[lang] = topics
+                        print(f"  Extracted {len(topics)} topics for {lang}")   
+
         update_database(df)
         
         # Aggregate results
         batch_results = {
-            'detailed': df.to_dict(orient='records'),
+            'detailed': valid_df.to_dict(orient='records'),
             'summary': {
                 'total_comments': len(df),
-                'valid_comments': valid_comments,
-                'language_distribution': df['detected_language'].value_counts().to_dict(),
-                'sentiment_distribution': df['sentiment_label'].value_counts().to_dict(),
-                'avg_sentiment_score_by_language': df.groupby('detected_language')['sentiment_score'].mean().to_dict(),
+                'valid_comments': len(valid_df),
+                'language_distribution': valid_df['detected_language'].value_counts().to_dict(),
+                'sentiment_distribution': valid_df['sentiment_label'].value_counts().to_dict(),
+                'avg_sentiment_score_by_language': valid_df.groupby('detected_language')['sentiment_score'].mean().to_dict(),
                 'topics_by_language': topics_by_language,
-                'question_analysis': analyze_questions(df)
+                'question_analysis': analyze_questions(valid_df) if len(valid_df) > 0 else None
             }
         }
         
