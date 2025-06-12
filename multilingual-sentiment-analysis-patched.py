@@ -879,12 +879,14 @@ def analyze_questions(df):
             'non_questions': df[~df['is_question']]['sentiment_label'].value_counts(normalize=True).to_dict()
         }
     }
-def analyze_emoji_sentiment(text):
 
-    if not hasattr('emoji_sentiment_map'):
-        emoji_sentiment_map = load_emoji_terms_map()
+emoji_sentiment_map = load_emoji_terms_map()
+def analyze_emoji_sentiment(text):
+    if emoji_map is None:
+        emoji_map = emoji_sentiment_map
 
     emoji_scores = []
+
     for char in text:
         if is_emoji(char) and char in emoji_sentiment_map:
             try:
@@ -896,12 +898,12 @@ def analyze_emoji_sentiment(text):
     if emoji_scores:
         avg_score = sum(emoji_scores) / len(emoji_scores)
         if avg_score < 0.4:
-            return 'negative'
+            return {'label': 'negative', 'score': avg_score}
         elif avg_score > 0.6:
-            return 'positive'
-        else:
-            return 'neutral'
-    return 'neutral'  
+            return {'label': 'positive', 'score': avg_score}
+    return {'label': 'neutral', 'score': 0.5}
+
+
 def analyze_sentiment(text, lang, sentiment_models):
     if not hasattr(analyze_sentiment, 'prayer_terms_map'):
         analyze_sentiment.prayer_terms_map = load_prayer_terms_map()
@@ -910,8 +912,7 @@ def analyze_sentiment(text, lang, sentiment_models):
         analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
     if is_emoji_only(text):
-        sentiment = analyze_emoji_sentiment(text)
-        return {'label': sentiment, 'score': 0.75 if sentiment == 'positive' else 0.25 if sentiment == 'negative' else 0.5  , 'spam': False}
+       return analyze_emoji_sentiment(text, analyze_sentiment.emoji_sentiment_map)
     
     prayer_score_adjustment = 0.0
     emoji_score_adjustment = 0.0
@@ -929,11 +930,10 @@ def analyze_sentiment(text, lang, sentiment_models):
     
     # Check for emoji-only comments
     cleaned_text = text.strip()
-    is_emoji_only = all(is_emoji(c) for c in cleaned_text if c.strip())
+    is_emoji_only_flag = all(is_emoji(c) for c in cleaned_text if c.strip())
     
     # Emoji-only sentiment analysis
-    if is_emoji_only:
-
+    if is_emoji_only_flag:
         emoji_scores = []
         for char in cleaned_text:
             if is_emoji(char) and char in analyze_sentiment.emoji_sentiment_map:
@@ -942,7 +942,7 @@ def analyze_sentiment(text, lang, sentiment_models):
                     emoji_scores.append(score)
                 except Exception as e:
                     logging.warning(f"Emoji score error: {e}")
-        
+            
         if emoji_scores:
             avg_score = sum(emoji_scores) / len(emoji_scores)
             if avg_score < 0.4:
