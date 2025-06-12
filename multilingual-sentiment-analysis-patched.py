@@ -881,27 +881,35 @@ def analyze_questions(df):
     }
 
 emoji_sentiment_map = load_emoji_terms_map()
-def analyze_emoji_sentiment(text):
-    if emoji_map is None:
-        emoji_map = emoji_sentiment_map
+def analyze_emoji_sentiment(text, emoji_sentiment_map=None):
+    if emoji_sentiment_map is None:
+        if hasattr(analyze_sentiment, 'emoji_sentiment_map'):
+            emoji_sentiment_map = analyze_sentiment.emoji_sentiment_map
+        else:
+            return {'label': 'neutral', 'score': 0.5, 'spam': False}
+
+    cleaned_text = text.strip()
 
     emoji_scores = []
-
-    for char in text:
+    for char in cleaned_text:
         if is_emoji(char) and char in emoji_sentiment_map:
             try:
                 score = float(emoji_sentiment_map[char])
                 emoji_scores.append(score)
             except Exception as e:
                 logging.warning(f"Emoji score error: {e}")
-    
+
     if emoji_scores:
         avg_score = sum(emoji_scores) / len(emoji_scores)
         if avg_score < 0.4:
-            return {'label': 'negative', 'score': avg_score}
+            sentiment = 'negative'
         elif avg_score > 0.6:
-            return {'label': 'positive', 'score': avg_score}
-    return {'label': 'neutral', 'score': 0.5}
+            sentiment = 'positive'
+        else:
+            sentiment = 'neutral'
+        return {'label': sentiment, 'score': avg_score, 'spam': False}
+    else:
+        return {'label': 'neutral', 'score': 0.5, 'spam': False}
 
 
 def analyze_sentiment(text, lang, sentiment_models):
@@ -912,7 +920,7 @@ def analyze_sentiment(text, lang, sentiment_models):
         analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
     if is_emoji_only(text):
-       return analyze_emoji_sentiment(text, analyze_sentiment.emoji_sentiment_map)
+       return analyze_emoji_sentiment(text)
     
     prayer_score_adjustment = 0.0
     emoji_score_adjustment = 0.0
