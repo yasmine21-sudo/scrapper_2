@@ -59,7 +59,7 @@ def connect_to_db():
     except Exception as e:
         print(f"Database connection error: {e}")
         return None
-
+'''
 def update_database(valid_df):
     print(f"Updating {len(valid_df)} records in database...")
     conn = connect_to_db()
@@ -76,17 +76,29 @@ def update_database(valid_df):
         # Prepare update data
         update_data = []
         for _, row in valid_df.iterrows():
-            update_data.append((
-                row['detected_language'],
-                row['sentiment_label'] ,
-                #float(row['sentiment_score']),
-                float(row['sentiment_score']) ,
-                #row.get('is_question', False), 
-                bool(row['is_question']),
-                json.dumps(row.get('question_indicators', {})), 
-                #row.get('is_spam', False),
-                bool(row['is_spam']),
-                row['id']
+            if row['is_spam']:
+                # For spam comments
+                update_data.append((
+                    row['detected_language'],  
+                    None,                      # sentiment_label
+                    None,                      # sentiment_score
+                    None,                      # is_question
+                    json.dumps(row.get('question_indicators', {})),  # question_indicators
+                    True,                      # is_spam
+                    row['id']                  # id
+                ))
+            else:
+                update_data.append((
+                    row['detected_language'],
+                    row['sentiment_label'] ,
+                    #float(row['sentiment_score']),
+                    float(row['sentiment_score']) ,
+                    #row.get('is_question', False), 
+                    bool(row['is_question']),
+                    json.dumps(row.get('question_indicators', {})), 
+                    #row.get('is_spam', False),
+                    bool(row['is_spam']),
+                    row['id']
             ))
         with conn:
             with conn.cursor() as cursor:
@@ -117,6 +129,89 @@ def update_database(valid_df):
         print(f"Error in database update process: {e}")
     finally:
         conn.close()
+
+'''
+
+def update_database(valid_df):
+    print(f"Updating {len(valid_df)} records in database...")
+    conn = connect_to_db()
+    if not conn:
+        return
+    updates_count = 0
+    batch_size = 100
+    required_columns = ['id', 'detected_language', 'sentiment_label', 'sentiment_score', 'is_question', 'question_indicators', 'is_spam']
+    missing = [col for col in required_columns if col not in valid_df.columns]
+    if missing:
+        print(f"ERROR: Missing columns for DB update: {missing}")
+        return
+    
+    try:
+        # Prepare update data with proper null handling
+        update_data = []
+        for _, row in valid_df.iterrows():
+            # Handle None/nan values
+            detected_lang = row['detected_language'] if pd.notna(row['detected_language']) else None
+            sentiment_label = row['sentiment_label'] if pd.notna(row['sentiment_label']) else None
+            sentiment_score = float(row['sentiment_score']) if pd.notna(row['sentiment_score']) else None
+            is_question = bool(row['is_question']) if pd.notna(row['is_question']) else None
+            
+            # Handle question_indicators - convert 'NaN' to None and ensure valid JSON
+            question_indicators = row.get('question_indicators', {})
+            if isinstance(question_indicators, str) and question_indicators.strip() == 'NaN':
+                question_indicators = None
+            elif isinstance(question_indicators, (dict, list)):
+                question_indicators = json.dumps(question_indicators)
+            elif question_indicators is None:
+                pass  # Keep as None
+            else:
+                # Invalid format, default to empty dict
+                question_indicators = json.dumps({})
+                
+            is_spam = bool(row['is_spam']) if pd.notna(row['is_spam']) else None
+            
+            update_data.append((
+                detected_lang,
+                sentiment_label,
+                sentiment_score,
+                is_question,
+                question_indicators,
+                is_spam,
+                row['id']
+            ))
+
+        with conn:
+            with conn.cursor() as cursor:
+                for i in range(0, len(update_data), batch_size):
+                    batch = update_data[i:i + batch_size]
+                    try:
+                        cursor.executemany(
+                            """UPDATE facebook_comments
+                               SET detected_language = %s,
+                                   sentiment_label = %s,
+                                   sentiment_score = %s,
+                                   is_question = %s,
+                                   question_indicators = %s,
+                                   is_spam = %s
+                               WHERE id = %s""",
+                            batch
+                        )
+                        updates_count += len(batch)
+                        print(f"Updated {updates_count}/{len(valid_df)} records...")
+                    except Exception as e:
+                        print(f"Error updating batch starting at record {i}: {e}")
+                        print(f"Problematic batch data: {batch}")
+                        conn.rollback()
+                        raise
+                        
+        print(f"Successfully updated {updates_count} records")
+    except Exception as e:
+        print(f"Error in database update process: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
 def check_database_connection():    
     import psycopg2
     conn = psycopg2.connect(dbname='page_comments',
@@ -188,11 +283,11 @@ def extract_commenter_name(raw_json):
     except Exception as e:
         return 'Unknown'
 
-
 def is_valid_comment(text):
-    """Check if comment contains meaningful content beyond just emojis"""
+
     if not isinstance(text, str) or not text.strip():
         return False
+    
     
     # emoji-only comments  Kawther verifi is_emoji ida tekhdem correctly
     if all(is_emoji(c) for c in text if c.strip()):
@@ -225,10 +320,10 @@ def process_comments(df):
     return valid_df
 
 def clean_text(text):
-    '''
+    
     if is_spam_comment(text):
-        return {'label': 'neutral', 'score': 0.5, 'spam': True}
-
+        return {'label': None , 'score': None , 'spam': True}
+    '''
     if pd.isna(text) or not isinstance(text, str):
         print(f"Invalid text: {text}")
         return ""
@@ -415,18 +510,54 @@ def load_sentiment_models():
         'darija': "C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline"
 
     }
-def load_sentiment_maps():
+import csv
+import csv
+
+def load_emoji_terms_map():
+    emoji_sentiment_map = {}
+    label_to_score = {
+        'positive': 1.0,
+        'neutre': 0.5,
+        'neutral': 0.5,
+        'negative': 0.0,
+        'negatif': 0.0
+    }
+
     try:
-        prayer_terms_df = pd.read_excel('prayer-map.xlsx')
-        prayer_terms_map = dict(zip(prayer_terms_df['term'], prayer_terms_df['label']))
-        
-        emoji_sentiment_df = pd.read_csv('emoji-map.csv')
-        emoji_sentiment_map = dict(zip(emoji_sentiment_df['emoji'], emoji_sentiment_df['label']))
-        
-        return prayer_terms_map, emoji_sentiment_map
+        with open('emoji_sentiment_map.csv', 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                emoji = row.get('emoji')
+                label = row.get('label', '').strip().lower()
+                score = label_to_score.get(label)
+                if emoji and score is not None:
+                    emoji_sentiment_map[emoji] = score
     except Exception as e:
-        print(f"Error loading sentiment maps: {e}")
-        return {}, {}
+        logging.error(f"Error loading emoji sentiment map: {e}")
+    
+    return emoji_sentiment_map  
+
+def load_prayer_terms_map():
+    prayer_terms_map = {}
+    label_to_score = {
+        'positive': 0.3,
+        'neutral': 0.0,
+        'negative': -0.3
+    }
+
+    try:
+        df = pd.read_excel('prayer-map.xlsx')
+        for _, row in df.iterrows():
+            term = str(row['term']).strip()
+            label = str(row['label']).strip().lower()
+            score = label_to_score.get(label)
+            if term and score is not None:
+                prayer_terms_map[term] = score
+    except Exception as e:
+        logging.error(f"Failed to load prayer term map: {e}")
+
+    return prayer_terms_map
+
 
 def is_emoji(char):
 
@@ -447,25 +578,39 @@ def is_spam_comment(text: str) -> bool:
     is_promotional = any(phrase in text.lower() for phrase in promotional_phrases)
     return hashtag_count >= 3 or link_count >= 1 or is_promotional
 '''
-def is_spam_comment(text):
+def is_emoji(char):
+
+    return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
+def is_emoji_only(text):
     if not isinstance(text, str):
         return False
-    
+    # Remove whitespace and check if all remaining chars are emojis
+    cleaned = text.strip()
+    return len(cleaned) > 0 and all(is_emoji(c) for c in cleaned if c.strip())
+def is_spam_comment(text: str) -> bool:
+
+    if not isinstance(text, str) or not text.strip():
+        return False
+        # Skip emoji-only comments from spam detection
+    if is_emoji_only(text):
+        return False
+    # Remove emojis from the text for spam detection
+    text_without_emojis = ''.join(c for c in text if not is_emoji(c))
     # Spam patterns
     spam_patterns = [
         r'http[s]?://\S+',  # URLs
         r'www\.\S+',         # URLs
         r'\b(join|subscribe|follow|click here|link in bio)\b',
         r'\b(اشترك|تابع|رابط|انضم|سجل)\b',
-        r'@\w+',             # Mentions
+        #r'@\w+',             # Mentions
         r'#\w+',             # Hashtags
-        r'\d{10,}',          # Long numbers
+        #r'\d{10,}',          # Long numbers
         r'[\u2700-\u27BF]',  # Dingbats
         r'[\uE000-\uF8FF]',  # Private use area
     ]
-    
-    matches = sum(bool(re.search(pattern, text, re.IGNORECASE)) for pattern in spam_patterns)
-    return matches >= 2  # At least 2 spam indicators
+    matches = sum(bool(re.search(pattern, text_without_emojis, re.IGNORECASE)) for pattern in spam_patterns)
+    return matches >= 1  # At least 2 spam indicators  we can change it if we want to be more or less strict
+
 
 def remove_mentions(text):
 
@@ -632,6 +777,8 @@ GLOBAL_QUESTION_WORDS = {
         'ما', 'ماذا', 'لماذا', 'كيف', 'متى', 'أين', 'من', 'هل'
         'عندكم ', 'كاين','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وين', 'شكون'
     }
+
+
 def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
 
     if pd.isna(text) or not isinstance(text, str) or not text.strip():
@@ -652,8 +799,8 @@ def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
     GLOBAL_QUESTION_WORDS = {
         'what', 'why', 'how', 'when', 'where', 'who', 'which', 'whom', 'whose', 'can', 'could', 'may'
         'quoi', 'pourquoi', 'comment', 'quand', 'où', 'qui est', 'quel', 'peut', 'pourrait'
-         'متى','ماذا', 'لماذا', 'كيف', 'متى', 'أين','هل'
-         'من فضلك','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وين', 'شكون'
+        'متى','ماذا', 'لماذا', 'كيف', 'متى', 'أين','هل'
+        'من فضلك','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وينتا', 'وين', 'شكون'
     }
     words_in_text = set(text_lower.split())
     indicators['has_question_word'] = not words_in_text.isdisjoint(GLOBAL_QUESTION_WORDS)
@@ -732,18 +879,50 @@ def analyze_questions(df):
             'non_questions': df[~df['is_question']]['sentiment_label'].value_counts(normalize=True).to_dict()
         }
     }
+def analyze_emoji_sentiment(text):
 
+    if not hasattr('emoji_sentiment_map'):
+        emoji_sentiment_map = load_emoji_terms_map()
+
+    emoji_scores = []
+    for char in text:
+        if is_emoji(char) and char in emoji_sentiment_map:
+            try:
+                score = float(emoji_sentiment_map[char])
+                emoji_scores.append(score)
+            except Exception as e:
+                logging.warning(f"Emoji score error: {e}")
+    
+    if emoji_scores:
+        avg_score = sum(emoji_scores) / len(emoji_scores)
+        if avg_score < 0.4:
+            return 'negative'
+        elif avg_score > 0.6:
+            return 'positive'
+        else:
+            return 'neutral'
+    return 'neutral'  
 def analyze_sentiment(text, lang, sentiment_models):
+    if not hasattr(analyze_sentiment, 'prayer_terms_map'):
+        analyze_sentiment.prayer_terms_map = load_prayer_terms_map()
 
+    if not hasattr(analyze_sentiment, 'emoji_sentiment_map'):
+        analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
+
+    if is_emoji_only(text):
+        sentiment = analyze_emoji_sentiment(text)
+        return {'label': sentiment, 'score': 0.75 if sentiment == 'positive' else 0.25 if sentiment == 'negative' else 0.5  , 'spam': False}
+    
     prayer_score_adjustment = 0.0
     emoji_score_adjustment = 0.0
 
+     #this could neutralise emoji only comments !!!!!
     '''if pd.isna(text) or text == '[null]' or not isinstance(text, str) or not text.strip():
         return {'label': 'neutral', 'score': 0.5}'''
     # First check for spam
     if is_spam_comment(text):
         return {'label': None, 'score': None, 'spam': True}
-    
+
     # Handle empty/invalid text
     if pd.isna(text) or text == '[null]' or not isinstance(text, str) or not text.strip():
         return {'label': 'neutral', 'score': 0.5}
@@ -775,6 +954,7 @@ def analyze_sentiment(text, lang, sentiment_models):
             return {'label': sentiment, 'score': avg_score, 'spam': False}
         else:
             return {'label': 'neutral', 'score': 0.5, 'spam': False}
+        
     '''
     # Si le texte contient uniquement des emojis connus
     if all(is_emoji(c) for c in text if c.strip()):
@@ -798,8 +978,6 @@ def analyze_sentiment(text, lang, sentiment_models):
                 sentiment = 'neutral'
             return {'label': sentiment, 'score': final_score}
         
-    if is_spam_comment(text):
-        return {'label': None, 'score': None, 'spam': True}
     '''
     cleaned_text = clean_text(text)
 
@@ -899,6 +1077,7 @@ def analyze_sentiment(text, lang, sentiment_models):
             sentiment_score = 0.5
         
         # Prayer-based adjustment
+        
         for term, term_score in analyze_sentiment.prayer_terms_map.items():
             if term.lower() in cleaned_text.lower():
                 try:
@@ -1175,7 +1354,7 @@ def analyze_facebook_comments():
                 'topics_by_language': {lang: extract_topics(df, lang) for lang in df['detected_language'].unique()}
             }
         }
-        # In your analyze_facebook_comments() function:
+
         results = analyze_facebook_comments()
         question_stats = analyze_questions(results['detailed'])
         results['summary']['question_analysis'] = question_stats
@@ -1346,9 +1525,9 @@ def analyze_facebook_comments():
 
     print("Loading sentiment models...")
     sentiment_models = load_sentiment_models()
-    prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
-    analyze_sentiment.prayer_terms_map = prayer_terms_map
-    analyze_sentiment.emoji_sentiment_map = emoji_sentiment_map
+    #prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
+    analyze_sentiment.prayer_terms_map =  load_prayer_terms_map()
+    analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
     batch_count = 0
     while True:
@@ -1454,6 +1633,13 @@ def analyze_facebook_comments():
         valid_df['sentiment_score'] = valid_df['sentiment'].apply(
             lambda x: x['score'] if isinstance(x, dict) else 0.5
         )
+        valid_df['is_spam'] = valid_df['sentiment'].apply(lambda x: x.get('spam', False) if isinstance(x, dict) else False)
+        valid_df.loc[valid_df['is_spam'], 'sentiment_label'] = None
+        valid_df.loc[valid_df['is_spam'], 'sentiment_score'] = None 
+        spam_df = df[df['is_spam']].copy()
+        update_database(pd.concat([valid_df, spam_df], ignore_index=True))
+
+    #   df_filtered = df[~df['is_spam']]
         print("DEBUG: Columns in final valid_DF:", valid_df.columns.tolist())
         print("DEBUG: Sample row:", valid_df.iloc[0].to_dict())
 
@@ -1464,7 +1650,7 @@ def analyze_facebook_comments():
         df.loc[df['is_spam'], 'sentiment_label'] = None
         df.loc[df['is_spam'], 'sentiment_score'] = None
 
-        update_database(valid_df)
+        #update_database(valid_df)
         print("DEBUG: Columns in final DF:", df.columns.tolist())
         print("DEBUG: Sample row:", df.iloc[0].to_dict())
 
@@ -1479,7 +1665,7 @@ def analyze_facebook_comments():
                         topics_by_language[lang] = topics
                         print(f"  Extracted {len(topics)} topics for {lang}")   
 
-        update_database(df)
+        #update_database(df)
         
         # Aggregate results
         batch_results = {
@@ -1493,8 +1679,7 @@ def analyze_facebook_comments():
                 'topics_by_language': topics_by_language,
                 'question_analysis': analyze_questions(valid_df) if len(valid_df) > 0 else None
             }
-        }
-        
+        }       
         # Merge batch results with overall results
         all_results['detailed'].extend(batch_results['detailed'])
         for key in ['total_comments', 'valid_comments']:
