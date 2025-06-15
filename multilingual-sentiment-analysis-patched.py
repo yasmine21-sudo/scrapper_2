@@ -528,7 +528,7 @@ def load_emoji_terms_map():
     }
 
     try:
-        with open('emoji_map.csv', 'r', encoding='utf-8') as f:
+        with open('emoji-map.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 emoji = row.get('emoji')
@@ -930,7 +930,7 @@ def analyze_emoji_sentiment(text, emoji_sentiment_map):
             sentiment = 'neutral'
         return {'label': sentiment, 'score': avg_score, 'spam': False}
     else:
-        return {'label': 'neutral', 'score': 0.5, 'spam': False}
+        return {'label': 'neutrall', 'score': 0.05, 'spam': False}
 
 
 def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_terms_map):
