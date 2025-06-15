@@ -31,7 +31,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 import nltk
 from nltk.corpus import stopwords
 import json
-import warnings
+import unicodedata
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 #warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
@@ -329,10 +329,12 @@ def clean_text(text):
         return ""
     '''
     if pd.isna(text) or not isinstance(text, str):
+        logging.debug(f"[clean_text] Invalid input: {text}")
         return ""
     
     # Preserve emojis
     emoji_chars = [c for c in text if is_emoji(c)]
+    logging.debug(f"[clean_text] Original: {text}, Emojis: {emoji_chars}")
     original = text
     # Normalize Arabic characters
     text = re.sub(r'[إأٱآا]', 'ا', text)
@@ -354,9 +356,11 @@ def clean_text(text):
 
     # If we stripped everything but had emojis, restore them
     if not text.strip() and emoji_chars:
-        return ' '.join(emoji_chars)
-    #print(f"Cleaning transformation:\nOriginal: {original}\nCleaned: {text}")
-
+        cleaned = ' '.join(emoji_chars)
+        logging.debug(f"[clean_text] Restored emojis: {cleaned}")
+        return cleaned
+    
+    logging.debug(f"[clean_text] Cleaned: {text}")
     return text.strip()
     
 def debug_cleaning(df):
@@ -524,7 +528,7 @@ def load_emoji_terms_map():
     }
 
     try:
-        with open('emoji_sentiment_map.csv', 'r', encoding='utf-8') as f:
+        with open('emoji_map.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 emoji = row.get('emoji')
@@ -581,12 +585,25 @@ def is_spam_comment(text: str) -> bool:
 def is_emoji(char):
 
     return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
+'''
 def is_emoji_only(text):
     if not isinstance(text, str):
         return False
-    # Remove whitespace and check if all remaining chars are emojis
-    cleaned = text.strip()
+    #cleaned = text.strip()
+    cleaned = ''.join(c for c in text if not unicodedata.category(c).startswith('C')).strip()
     return len(cleaned) > 0 and all(is_emoji(c) for c in cleaned if c.strip())
+'''
+def is_emoji_only(text):
+    if not isinstance(text, str):
+        logging.debug(f"[is_emoji_only] Input is not a string: {text}")
+        return False
+    
+    emojis = [c for c in text if c in emoji.UNICODE_EMOJI['en']]
+    cleaned = ''.join(emojis).strip()
+    is_only_emoji = len(cleaned) > 0 and all(c in emoji.UNICODE_EMOJI['en'] for c in text if c.strip())
+    logging.debug(f"[is_emoji_only] Text: {text}, Cleaned: {cleaned}, Is emoji-only: {is_only_emoji}")
+    return is_only_emoji
+
 def is_spam_comment(text: str) -> bool:
 
     if not isinstance(text, str) or not text.strip():
@@ -775,9 +792,12 @@ GLOBAL_QUESTION_WORDS = {
         'what', 'why', 'how', 'when', 'where', 'who', 'which', 'whom', 'whose', 'can', 'could', 'may'
         'quoi', 'pourquoi', 'comment', 'quand', 'où', 'qui', 'quel', 'peut', 'pourrait'
         'ما', 'ماذا', 'لماذا', 'كيف', 'متى', 'أين', 'من', 'هل'
-        'عندكم ', 'كاين','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وين', 'شكون'
+        'عندكم ','كم', 'كاين','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وين', 'شكون'
     }
 
+# Global initialization
+emoji_sentiment_map = load_emoji_terms_map()
+prayer_terms_map = load_prayer_terms_map()
 
 def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
 
@@ -881,7 +901,8 @@ def analyze_questions(df):
     }
 
 emoji_sentiment_map = load_emoji_terms_map()
-def analyze_emoji_sentiment(text, emoji_sentiment_map=None):
+def analyze_emoji_sentiment(text, emoji_sentiment_map):
+
     if emoji_sentiment_map is None:
         if hasattr(analyze_sentiment, 'emoji_sentiment_map'):
             emoji_sentiment_map = analyze_sentiment.emoji_sentiment_map
@@ -912,7 +933,8 @@ def analyze_emoji_sentiment(text, emoji_sentiment_map=None):
         return {'label': 'neutral', 'score': 0.5, 'spam': False}
 
 
-def analyze_sentiment(text, lang, sentiment_models):
+def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_terms_map):
+
     if not hasattr(analyze_sentiment, 'prayer_terms_map'):
         analyze_sentiment.prayer_terms_map = load_prayer_terms_map()
 
@@ -920,7 +942,8 @@ def analyze_sentiment(text, lang, sentiment_models):
         analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
     if is_emoji_only(text):
-       return analyze_emoji_sentiment(text)
+       return analyze_emoji_sentiment(text, emoji_sentiment_map)
+      
     
     prayer_score_adjustment = 0.0
     emoji_score_adjustment = 0.0
@@ -1552,6 +1575,7 @@ def analyze_facebook_comments():
             continue 
 
         # Data cleaning
+        df['is_emoji_only'] = df['comment_message'].apply(is_emoji_only)
         df['comment_message'] = df['comment_message'].replace('[null]', np.nan)
         # hna i can add more cleaning if needed
         df['is_spam'] = df['comment_message'].apply(is_spam_comment)
@@ -1562,6 +1586,7 @@ def analyze_facebook_comments():
         df['is_valid'] = ~df['is_spam'] & df['cleaned_message'].apply(
             lambda x: isinstance(x, str) and (x.strip() != '' or any(is_emoji(c) for c in x))
         )
+
         #valid_comments = len(df)
         valid_df = df[df['is_valid']].copy()
         #print(f"[Batch {batch_count}] Extracted: {len(df)} | Valid after cleaning: {valid_comments}")
@@ -1605,13 +1630,12 @@ def analyze_facebook_comments():
 
         # Language detection
         print("Detecting languages...")
-        valid_df['detected_language'] = valid_df['cleaned_message'].apply(detect_language)
+        #valid_df['detected_language'] = valid_df['cleaned_message'].apply(detect_language)
+        valid_df['detected_language'] = valid_df.apply(
+            lambda row: 'emoji' if row['is_emoji_only'] else detect_language(row['cleaned_message']),
+            axis=1
+        )
 
-        '''
-        # Language detection
-        print("Detecting languages...")
-        df['detected_language'] = df['comment_message'].apply(detect_language)
-        '''
         # Question detection
         print("Detecting questions...")
         #question_results = df['comment_message'].apply(detect_questions)
@@ -1622,8 +1646,16 @@ def analyze_facebook_comments():
         # Sentiment analysis
        
         print("Analyzing sentiment...")
+        '''
         valid_df['sentiment'] = valid_df.apply(
-            lambda row: analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models), 
+            lambda row: analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models, emoji_sentiment_map, prayer_terms_map),
+            axis=1
+        )
+        '''
+        valid_df['sentiment'] = valid_df.apply(
+            lambda row: analyze_emoji_sentiment(row['comment_message'], emoji_sentiment_map)
+            if row['is_emoji_only']
+            else analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models, emoji_sentiment_map, prayer_terms_map),
             axis=1
         )
         '''
