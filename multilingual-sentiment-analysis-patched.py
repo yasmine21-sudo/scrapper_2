@@ -1405,137 +1405,6 @@ def analyze_facebook_comments():
         return "Analysis completed successfully!"
 '''
 
-def generate_analysis_report(analysis_results):   
-    print("\nGenerating strategic improvement report...")
-    # Validate input data
-    if not analysis_results or not isinstance(analysis_results, dict):
-        raise ValueError("Invalid analysis_results: Expected dictionary")
-    required_keys = ['summary', 'detailed']
-    for key in required_keys:
-        if key not in analysis_results:
-            raise ValueError(f"Missing required key in analysis_results: {key}")
-    payload = {
-        "analysis_data": {
-            "language_distribution": analysis_results['summary']['language_distribution'],
-            "sentiment_distribution": analysis_results['summary']['sentiment_distribution'],
-            "topics_by_language": analysis_results['summary']['topics_by_language'],
-            "sample_comments": [x['comment_message'] for x in analysis_results['detailed'][:100]]  # Send sample of comments
-        },
-        "request_type": "marketing_improvement",
-        "timestamp": datetime.now().isoformat()
-    }
-
-    try:
-        
-        API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-        DEEPSEEK_API_URL = "https://api.deepseek.com/v1/analyze/marketing"
-        API_KEY = "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" 
-        
-        headers = {
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://openrouter.ai/api/v1/chat/completions",
-            "X-Title": "Marketing Analysis Tool"
-        }
-        '''data = {
-            "model": "deepseek/deepseek-chat:free",
-            "messages": [{"role": "user", "content":" Analyze the following data and provide strategic marketing improvement recommendations based on the sentiment analysis and language distribution of Facebook comments."}],
-            #"temperature": 0.7,
-            #"max_tokens": 1500,
-            #"top_p": 0.9,
-            #"frequency_penalty": 0.0,
-            #"presence_penalty": 0.0,
-            #"stop": ["\n\n"]
-        }'''
-        data = {
-            "model": "deepseek/deepseek-chat:free",
-            "messages": [
-                {"role": "system", "content": "You are a marketing analyst."},
-                {"role": "user", "content": f"""Analyze the following data and provide strategic marketing recommendations:
-
-        LANGUAGE DISTRIBUTION:
-        {json.dumps(analysis_results['summary']['language_distribution'], indent=2)}
-
-        SENTIMENT DISTRIBUTION:
-        {json.dumps(analysis_results['summary']['sentiment_distribution'], indent=2)}
-
-        TOPICS BY LANGUAGE:
-        {json.dumps(analysis_results['summary']['topics_by_language'], indent=2)}
-
-        SAMPLE COMMENTS:
-        {json.dumps([x['comment_message'] for x in analysis_results['detailed'][:20]], indent=2)}
-
-        Provide recommendations in this format:
-        1. Content Strategy: [analysis]
-        2. Engagement Opportunities: [analysis]
-        3. Sentiment Improvement: [analysis]
-        4. Language-Specific Suggestions: [analysis per language]
-        """}
-            ]
-        }
-        #response = requests.post(API_URL, json=payload, headers=headers, timeout=30)
-        response = requests.post(API_URL, json=data, headers=headers, timeout=30)
-        response.raise_for_status()  # Raises exception for 4XX/5XX responses
-        api_response = response.json()
-        print("API Response:", api_response)
-        #response = requests.post(API_URL, json=payload, headers=headers, timeout=30)
-        try:
-            report_content = api_response['choices'][0]['message']['content']
-        except (KeyError, IndexError) as e:
-            print("Unexpected API response format")
-            report_content = str(api_response)
-        if response.status_code == 200:
-            report = response.json()
-            print("API Response:", response.json())
-        # Save the full report
-        report_filename = f"marketing_recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(report_filename, 'w', encoding='utf-8') as f:
-            f.write(report_content)
-        
-        # Print the recommendations
-        print("\n=== MARKETING IMPROVEMENT RECOMMENDATIONS ===")
-        print(report_content)
-        print(f"\nFull report saved to {report_filename}")
-        
-        return {
-            "status": "success",
-            "report_content": report_content,
-            "report_file": report_filename
-        }
-
-    except requests.exceptions.RequestException as e:
-        print(f"API request failed: {e}")
-        return {"status": "error", "message": str(e)}
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return {"status": "error", "message": str(e)}
-'''            
-            # Save the full report
-            report_filename = f"marketing_recommendations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            with open(report_filename, 'w', encoding='utf-8') as f:
-                json.dump(report, f, indent=2, ensure_ascii=False)
-            
-            # Print key recommendations
-            print("\n=== MARKETING IMPROVEMENT RECOMMENDATIONS ===")
-            print(f"1. Content Strategy: {report.get('content_strategy', 'No specific recommendations')}")
-            print(f"2. Engagement Opportunities: {report.get('engagement_opportunities', 'Not identified')}")
-            print(f"3. Sentiment Improvement: {report.get('sentiment_improvement', 'No specific recommendations')}")
-            print(f"4. Language-Specific Suggestions:")
-            for lang, suggestion in report.get('language_specific', {}).items():
-                print(f"   - {lang.upper()}: {suggestion}")
-            
-            print(f"\nFull report saved to {report_filename}")
-            return report
-        else:
-            print("Failed to fetch data from API. Status Code:", response.status_code)
-            print(f"API request failed with status {response.status_code}: {response.text}")
-            return None
-
-    except Exception as e:
-        print(f"Error generating report: {e}")
-        return None
-'''
-
 def analyze_facebook_comments():
     empty_batch_count = 0
     max_empty_batches = 5
@@ -1784,10 +1653,96 @@ def analyze_facebook_comments():
 
     # Save final results
     save_analysis_results(all_results)
-    generate_analysis_report(all_results)
+    generate_strategic_report_with_comments(df)
+    
     print("\nAnalysis completed successfully!")
     return all_results
 
+def generate_strategic_report_with_comments(df):
+    
+    print("\nGenerating strategic improvement report with raw comments...")
+
+    # 1️⃣ Filtrage selon tes critères
+    # Vérifie la présence des colonnes et complète si besoin
+    required_columns = ['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question', 'commenter_name', 'is_spam']
+    for col in required_columns:
+        if col not in df.columns:
+            df[col] = None  # Ajoute la colonne manquante avec valeurs None
+
+    # Filtrage selon tes critères (après ajout sécurisé des colonnes)
+    filtered_df = df[
+        (df['commenter_name'] != 'Hasnaoui Private Hospital') &
+        (df['is_spam'] != True)
+    ][['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question']].copy()
+
+    comment_records = filtered_df.to_dict(orient='records')
+
+    # EXTRACTION DES QUESTIONS
+    questions_df = filtered_df[filtered_df['is_question'] == True].copy()
+    questions_list = questions_df['comment_message'].tolist()
+
+    # Conversion en liste de dictionnaires pour l'API
+    comment_records = filtered_df.to_dict(orient='records')
+
+    # 2️⃣ Conversion en liste de dictionnaires (plus propre pour LLM)
+    comment_records = filtered_df.to_dict(orient='records')
+
+    # 3️⃣ Construction du prompt
+    prompt = f"""
+You are a multilingual expert in marketing strategy, customer sentiment analysis, and customer experience optimization.
+
+You will analyze real Facebook customer comments collected in multiple languages: French, English, Arabic and Algerian Arabic (Darija).
+
+Here is a dataset of customer comments (message, language, sentiment label, question detection and post id context):
+
+{json.dumps(comment_records, indent=2, ensure_ascii=False)}
+
+Here is a list of questions frequently asked by customers:
+{json.dumps(questions_list, indent=2, ensure_ascii=False)}
+
+Based on this data, please generate:
+1️⃣ Marketing strategy recommendations.
+2️⃣ Customer engagement improvements.
+3️⃣ Content and communication optimizations.
+4️⃣ Language-specific or cultural insights.
+5️⃣ Suggestions for potential answers or communication scripts to address the most frequently asked questions.
+"""
+
+    # 4️⃣ Construction de la requête API OpenRouter
+    API_URL = "https://openrouter.ai/api/v1/chat/completions"
+    api_key =  "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" 
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        #"model": "mistralai/mistral-7b-instruct",
+        "model": "opengvlab/internvl3-14b:free",
+        "messages": [
+            {"role": "system", "content": "You are a strategic marketing expert."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7
+    }
+
+    # 5️⃣ Appel de l'API
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+        response.raise_for_status()
+
+        result = response.json()
+        generated_text = result['choices'][0]['message']['content']
+        print("\n=== MARKETING RECOMMENDATIONS ===\n")
+        print(generated_text)
+
+        report_filename = f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(report_filename, 'w', encoding='utf-8') as f:
+            f.write(generated_text)
+        print(f"\nReport saved to {report_filename}")
+
+    except requests.exceptions.RequestException as e:
+        print("API request failed:", e)
 # Run the analysis
 if __name__ == "__main__":
     analyze_facebook_comments()
