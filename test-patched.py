@@ -235,9 +235,9 @@ def save_data_to_csv(posts_df, comments_df, output_dir=None):
 def get_db_connection():
     return psycopg2.connect(
         dbname='page_comments',
-        user='postgres',
-        password='Azerty123**',
-        host='localhost',
+        user='scrapper_user',
+        password='scRaPPer_user',
+        host='10.20.10.42',
         port='5432'
     )
 
