@@ -53,7 +53,7 @@ def connect_to_db():
             dbname='page_comments',
             user='scrapper_user',
             password='scRaPPer_user',
-            host='localhost',
+            host='10.20.10.42',
             port='5432'
         )
     except Exception as e:
@@ -217,7 +217,7 @@ def check_database_connection():
     conn = psycopg2.connect(dbname='page_comments',
             user='scrapper_user',
             password='scRaPPer_user',
-            host='localhost',
+            host='10.20.10.42',
             port='5432')
     cur = conn.cursor()
     cur.execute("""
