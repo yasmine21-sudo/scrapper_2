@@ -17,7 +17,7 @@ def get_page_posts(page_id, access_token, post_limit=300):
         'fields': 'name,id'
     }
     
-    verify_response = requests.get(verify_url, params=verify_params)
+    verify_response = requests.get(verify_url, params=verify_params, verify=False)
     verify_data = verify_response.json()
     
     if 'error' in verify_data:
@@ -52,7 +52,7 @@ def get_page_posts(page_id, access_token, post_limit=300):
     next_url = base_url
     
     while next_url and len(posts_data) < post_limit:
-        response = requests.get(next_url, params=params)
+        response = requests.get(next_url, params=params, verify=False)
         data = response.json()
         
         if 'error' in data:
@@ -86,7 +86,7 @@ def get_comments_for_post(post_id, access_token, comment_limit=500):
     next_url = base_url
     
     while next_url and len(comments_data) < comment_limit:
-        response = requests.get(next_url, params=params)
+        response = requests.get(next_url, params=params, verify=False)
         data = response.json()
         
         if 'error' in data:
@@ -140,7 +140,7 @@ def get_comment_replies(comment_id, access_token, reply_limit=100):
     next_url = base_url
     
     while next_url and len(replies_data) < reply_limit:
-        response = requests.get(next_url, params=params)
+        response = requests.get(next_url, params=params, verify=False)
         data = response.json()
         
         if 'error' in data:
