@@ -1,0 +1,41 @@
+term,Langue,label,term_score
+ما شاء الله,ar,positive,0.92 – 0.98
+الله يبارك,ar,positive,0.95 – 0.99
+الحمد لله,ar,positive,0.96 – 1.00
+إن شاء الله,ar,positive,0.90 – 0.97
+الله أكبر,ar,positive,0.88 – 0.95
+جزاك الله خيراً,ar,positive,0.97 – 1.00
+رحمك الله,ar,positive,0.85 – 0.95
+الله يشفيك,ar,positive,0.90 – 0.97
+بارك الله فيك,ar,positive,0.95 – 0.99
+الله يوفقك,ar,positive,0.93 – 0.99
+استغفر الله,ar,negative,0.70 – 0.90
+سبحان الله,ar,negative,0.85 – 0.95
+لا إله إلا الله,ar,negative,0.85 – 0.95
+الله ينورك,ar,positive,0.93 – 0.97
+ربي يحفظك,ar,positive,0.95 – 0.98
+الله يرحمو,ar,positive,0.88 – 0.94
+ربي يعاونك,ar,positive,0.94 – 0.98
+الله معاك,ar,positive,0.90 – 0.96
+machaAllah,darija, positive,0.92 – 0.98
+Allah ybarek,darija,positive,0.95 – 0.99
+alhamdulillah,darija,positive,0.96 – 1.00
+inchallah,darija,positive,0.90 – 0.97
+Allahu akbar,darija,positive,0.88 – 0.95
+jazak Allah khayran,darija,positive,0.97 – 1.00
+rahimak Allah,darija,positive,0.85 – 0.95
+Allah ychfik,darija,positive,0.90 – 0.97
+barak Allah fik,darija,positive,0.95 – 0.99
+Allah ywafqek,darija,positive,0.93 – 0.99
+astaghfirullah,darija,negative,0.70 – 0.90
+subhanAllah,darija,negative,0.85 – 0.95
+la ilaha illa Allah,darija,negative,0.85 – 0.95
+Allah ynawrek,darija,positive,0.93 – 0.97
+Rabbi yahfdek,darija,positive,0.95 – 0.98
+Allah yerhmo,darija,positive,0.88 – 0.94
+Rabbi ya3awnk,darija,positive,0.94 – 0.98
+Allah m3ak,darija,positive,0.90 – 0.96
+Bi Tawfik,darija,positive,0.85 – 0.95
+inshallah,darija,positive,0.90 – 0.97
+بالتوفيق,ar,positive,0.90 – 0.96
+Machallah,darija,positive,0.90 – 0.97
