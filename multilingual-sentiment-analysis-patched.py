@@ -550,13 +550,14 @@ def load_prayer_terms_map():
     }
 
     try:
-        df = pd.read_excel('prayer-map.xlsx')
-        for _, row in df.iterrows():
-            term = str(row['term']).strip()
-            label = str(row['label']).strip().lower()
-            score = label_to_score.get(label)
-            if term and score is not None:
-                prayer_terms_map[term] = score
+        with open('prayer-map2.csv', 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                term = row.get('term')
+                label = row.get('label', '').strip().lower()
+                score = label_to_score.get(label)
+                if term and score is not None:
+                    prayer_terms_map[term] = score
     except Exception as e:
         logging.error(f"Failed to load prayer term map: {e}")
 
