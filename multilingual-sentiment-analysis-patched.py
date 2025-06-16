@@ -502,16 +502,16 @@ def load_model(model_name):
 
 def load_sentiment_models():
     return {
-        'en': "nlptown/bert-base-multilingual-uncased-sentiment",#work
-        'fr': "nlptown/bert-base-multilingual-uncased-sentiment",#work
+        'en': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/",#work
+        'fr': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/",#work
         #'ar': "UBC-NLP/MARBERT", # More stable
         #'ar': "Abdo36/Arabert-Sentiment-Analysis-ArSAS", 
         #'darija': "alger-ia/dziribert", #work
         #'darija':"Abdo36/Arabert-Sentiment-Analysis-ArSAS"
         #'ar': "CAMeL-Lab/bert-base-arabic-camelbert-da-sentiment",
-        #'darija': "nlptown/bert-base-multilingual-uncased-sentiment" 
-        'ar': "C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
-        'darija': "C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline"
+        #'darija': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/" 
+        'ar': "/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
+        'darija': "/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/"
 
     }
 import csv
@@ -1029,8 +1029,8 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
         #sentiment_pipeline = pipeline(task="text-classification",model="Abdo36/Arabert-Sentiment-Analysis-ArSAS")
         sentiment_pipeline =pipeline(
                     task="text-classification",
-                    model="C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
-                    tokenizer="C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
+                    model="/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
+                    tokenizer="/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
                     truncation=True,         )
         result = sentiment_pipeline(cleaned_text)[0]
         return {'label': result['label'], 'score': result['score']}
