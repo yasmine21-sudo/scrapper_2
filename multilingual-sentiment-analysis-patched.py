@@ -51,8 +51,8 @@ def connect_to_db():
     try:
         return psycopg2.connect(
             dbname='page_comments',
-            user='postgres',
-            password='Azerty123**',
+            user='scrapper_user',
+            password='scRaPPer_user',
             host='localhost',
             port='5432'
         )
@@ -215,8 +215,8 @@ def update_database(valid_df):
 def check_database_connection():    
     import psycopg2
     conn = psycopg2.connect(dbname='page_comments',
-            user='postgres',
-            password='Azerty123**',
+            user='scrapper_user',
+            password='scRaPPer_user',
             host='localhost',
             port='5432')
     cur = conn.cursor()
@@ -1110,11 +1110,11 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
         
         # Prayer-based adjustment
         
-        for term, term_score in analyze_sentiment.prayer_terms_map.items():
+        for term, score in analyze_sentiment.prayer_terms_map.items():
             if term.lower() in cleaned_text.lower():
                 try:
                     weight = min(1.0, 10.0 / len(cleaned_text.split()))
-                    prayer_score_adjustment += float(term_score) * weight
+                    prayer_score_adjustment += float(score) * weight
                 except Exception as e:
                     logging.warning(f"Prayer term score error: {e}") 
         # Emoji-based adjustment
