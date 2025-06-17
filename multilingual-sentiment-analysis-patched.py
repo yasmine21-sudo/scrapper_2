@@ -52,9 +52,9 @@ def connect_to_db():
     try:
         return psycopg2.connect(
             dbname='page_comments',
-            user='postgres',
-            password='Azerty123**',
-            host='localhost',
+            user='scrapper_user',
+            password='scRaPPer_user',
+            host='10.20.10.42',
             port='5432'
         )
     except Exception as e:
@@ -216,9 +216,9 @@ def update_database(valid_df):
 def check_database_connection():    
 
     conn = psycopg2.connect(dbname='page_comments',
-            user='postgres',
-            password='Azerty123**',
-            host='localhost',
+            user='scrapper_user',
+            password='scRaPPer_user',
+            host='10.20.10.42',
             port='5432')
     cur = conn.cursor()
     cur.execute("""
@@ -503,16 +503,16 @@ def load_model(model_name):
 
 def load_sentiment_models():
     return {
-        'en': "nlptown/bert-base-multilingual-uncased-sentiment",#work
-        'fr': "nlptown/bert-base-multilingual-uncased-sentiment",#work
+        'en': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/",#work
+        'fr': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/",#work
         #'ar': "UBC-NLP/MARBERT", # More stable
         #'ar': "Abdo36/Arabert-Sentiment-Analysis-ArSAS", 
         #'darija': "alger-ia/dziribert", #work
         #'darija':"Abdo36/Arabert-Sentiment-Analysis-ArSAS"
         #'ar': "CAMeL-Lab/bert-base-arabic-camelbert-da-sentiment",
-        #'darija': "nlptown/bert-base-multilingual-uncased-sentiment" 
-        'ar': "C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
-        'darija': "C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline"
+        #'darija': "/home/benslimane_m/scrapper/scrapper_2/NLPTown-Sentiment-Offline/" 
+        'ar': "/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
+        'darija': "/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/"
 
     }
 import csv
@@ -1031,8 +1031,8 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
         #sentiment_pipeline = pipeline(task="text-classification",model="Abdo36/Arabert-Sentiment-Analysis-ArSAS")
         sentiment_pipeline =pipeline(
                     task="text-classification",
-                    model="C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
-                    tokenizer="C:/Users/H0015701/Documents/scrapper/Arabert-Sentiment-Offline",
+                    model="/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
+                    tokenizer="/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
                     truncation=True,         )
         result = sentiment_pipeline(cleaned_text)[0]
         return {'label': result['label'], 'score': result['score']}

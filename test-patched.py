@@ -11,11 +11,8 @@ from psycopg2 import sql
 def get_page_posts(page_id, access_token, post_limit=300):
 
     # verify page and token
-    verify_url = f"https://graph.facebook.com/v22.0/{page_id}"
-    verify_params = {
-        'access_token': access_token,
-        'fields': 'name,id'
-    }
+    verify_url = f"https://graph.facebook.com/v22.0/123720937495669"
+    verify_params = {'access_token': 'EAAJmVsyNw8MBOZCFfop3xvhdxIivFZA8ubVq59nZBR5CQ36C363wY9HJgS06O7UF8YCmoDKVPiAQ0sYd96lxQyJN8TS8FJOKb2pbUAfoqqIvvl6e43f0GScRYK8ePJyAoAJH64dcZBtzg612aeZBEZCYtg97TczA9exGKHOGEZBeB3LIgcHQf8SiFHfmMM2q1LIZCCAZD', 'fields': 'name,id'}
     
     verify_response = requests.get(verify_url, params=verify_params)
     verify_data = verify_response.json()
@@ -235,9 +232,9 @@ def save_data_to_csv(posts_df, comments_df, output_dir=None):
 def get_db_connection():
     return psycopg2.connect(
         dbname='page_comments',
-        user='postgres',
-        password='Azerty123**',
-        host='localhost',
+        user='scrapper_user',
+        password='scRaPPer_user',
+        host='10.20.10.42',
         port='5432'
     )
 
