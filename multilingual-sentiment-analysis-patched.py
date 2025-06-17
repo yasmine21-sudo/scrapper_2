@@ -641,6 +641,7 @@ def analyze_questions(df):
     }
 
 emoji_sentiment_map = load_emoji_terms_map()
+prayer_terms_map = load_prayer_terms_map()
 def analyze_emoji_sentiment(text, emoji_sentiment_map):
 
     if emoji_sentiment_map is None:
@@ -1020,7 +1021,7 @@ def analyze_facebook_comments():
 
     print("Loading sentiment models...")
     sentiment_models = load_sentiment_models()
-    #prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
+    
     analyze_sentiment.prayer_terms_map =  load_prayer_terms_map()
     analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
@@ -1230,7 +1231,10 @@ def generate_strategic_report_from_posts(df):
         if col not in df.columns:
             print(f"❌ Missing column: {col}")
             return
+            print(f"❌ Missing column: {col}")
+            return
 
+    df = df[
     df = df[
         (df['commenter_name'] != 'Hasnaoui Private Hospital') &
         (df.get('is_spam', False) != True)
@@ -1268,8 +1272,62 @@ def generate_strategic_report_from_posts(df):
         print("❌ No valid comments to generate report.")
         return
 
+        (df.get('is_spam', False) != True)
+    ].copy()
+
+    conn = get_pg_connection()
+    if conn is None:
+        return
+
+    def get_post_message(post_id):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT post_message FROM facebook_posts WHERE post_id = %s LIMIT 1", (post_id,))
+                row = cur.fetchone()
+                return row[0].strip() if row and row[0] else "[Post message not found]"
+        except Exception as e:
+            print(f"❌ Error fetching post message for {post_id}: {e}")
+            return "[Post message error]"
+
+    posts_and_comments = []
+    for post_id, group in df.groupby('post_id'):
+        comments = group['comment_message'].dropna().tolist()
+        if not comments:
+            continue
+        post_message = get_post_message(post_id)
+        posts_and_comments.append({
+            "post_id": post_id,
+            "post_message": post_message,
+            "comments": comments
+        })
+
+    conn.close()
+
+    if not posts_and_comments:
+        print("❌ No valid comments to generate report.")
+        return
+
     prompt = f"""
 You are a healthcare digital marketing strategist specializing in social media feedback analysis.
+You are a healthcare digital marketing strategist specializing in social media feedback analysis.
+
+You are analyzing real Facebook posts and associated patient comments from "Hasnaoui Private Hospital" in Sidi Bel Abbès, Algeria.
+
+Each item below contains:
+- The original Facebook post message
+- A list of real comments received in response (feedback, questions, praise, complaints, etc.)
+
+Please:
+1️⃣ Analyze each post's tone, clarity, emotional impact.
+2️⃣ Identify recurring themes or missed engagement opportunities in comments or frequent questions.
+3️⃣ Propose improvements in content strategy and patient interaction.
+4️⃣ Suggest specific answers or FAQ entries to address common questions.
+5️⃣ Recommend new post ideas based on observed needs or missed topics.
+6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals.
+
+Dataset:
+{json.dumps(posts_and_comments, indent=2, ensure_ascii=False)}
+"""
 
 You are analyzing real Facebook posts and associated patient comments from "Hasnaoui Private Hospital" in Sidi Bel Abbès, Algeria.
 
@@ -1291,6 +1349,7 @@ Dataset:
 
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
     api_key = "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" 
+    api_key = "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" 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -1302,7 +1361,13 @@ Dataset:
         #"model": "deepseek/deepseek-r1-0528:free", #good
         "model": "deepseek/deepseek-chat-v3-0324:free",
 
+        #"model": "mistralai/mixtral-8x7b-instruct",
+        #"model": "opengvlab/internvl3-14b:free",
+        #"model": "deepseek/deepseek-r1-0528:free", #good
+        "model": "deepseek/deepseek-chat-v3-0324:free",
+
         "messages": [
+            {"role": "system", "content": "You are a senior strategic marketing consultant for the healthcare sector."},
             {"role": "system", "content": "You are a senior strategic marketing consultant for the healthcare sector."},
             {"role": "user", "content": prompt}
         ],
@@ -1311,8 +1376,13 @@ Dataset:
 
     try:
         response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
         response.raise_for_status()
         result = response.json()
+
+        report_text = result['choices'][0]['message']['content']
+        print("\n✅ Strategic Report Generated:\n")
+        print(report_text)
 
         report_text = result['choices'][0]['message']['content']
         print("\n✅ Strategic Report Generated:\n")
@@ -1322,8 +1392,13 @@ Dataset:
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(report_text)
         print(f"\n📄 Report saved to {filename}")
+        filename = f"strategic_post_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(report_text)
+        print(f"\n📄 Report saved to {filename}")
 
     except requests.exceptions.RequestException as e:
+        print(f"❌ API request failed: {e}")
         print(f"❌ API request failed: {e}")
 # Run the analysis
 if __name__ == "__main__":
