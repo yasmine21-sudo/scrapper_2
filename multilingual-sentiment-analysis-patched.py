@@ -4,11 +4,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
 import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-import keras
 import requests
 from datetime import datetime
-from arabic_reshaper import reshape
-from bidi.algorithm import get_display
+import urllib.parse
 import pandas as pd
 import traceback
 import transformers
@@ -31,107 +29,28 @@ from sklearn.decomposition import LatentDirichletAllocation
 import nltk
 from nltk.corpus import stopwords
 import json
-import unicodedata
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
-#warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 import logging
 from transformers import pipeline
-from functools import lru_cache
 
-logging.basicConfig(
-    filename='sentiment_analysis.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(filename='sentiment_analysis.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 tf.experimental.numpy.experimental_enable_numpy_behavior()
 
+DB_NAME = 'page_comments'
+DB_USER = 'scrapper_user'
+DB_PASSWORD = 'scRaPPer_user'
+DB_HOST = '10.20.10.42'
+DB_PORT = '5432'
+
 def connect_to_db():
     try:
-        return psycopg2.connect(
-            dbname='page_comments',
-            user='scrapper_user',
-            password='scRaPPer_user',
-            host='10.20.10.42',
-            port='5432'
-        )
+        return psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT)
     except Exception as e:
         print(f"Database connection error: {e}")
         return None
-'''
-def update_database(valid_df):
-    print(f"Updating {len(valid_df)} records in database...")
-    conn = connect_to_db()
-    if not conn:
-        return
-    updates_count = 0
-    batch_size = 100
-    required_columns = ['id', 'detected_language', 'sentiment_label', 'sentiment_score', 'is_question', 'question_indicators', 'is_spam']
-    missing = [col for col in required_columns if col not in valid_df.columns]
-    if missing:
-        print(f"ERROR: Missing columns for DB update: {missing}")
-        return
-    try:
-        # Prepare update data
-        update_data = []
-        for _, row in valid_df.iterrows():
-            if row['is_spam']:
-                # For spam comments
-                update_data.append((
-                    row['detected_language'],  
-                    None,                      # sentiment_label
-                    None,                      # sentiment_score
-                    None,                      # is_question
-                    json.dumps(row.get('question_indicators', {})),  # question_indicators
-                    True,                      # is_spam
-                    row['id']                  # id
-                ))
-            else:
-                update_data.append((
-                    row['detected_language'],
-                    row['sentiment_label'] ,
-                    #float(row['sentiment_score']),
-                    float(row['sentiment_score']) ,
-                    #row.get('is_question', False), 
-                    bool(row['is_question']),
-                    json.dumps(row.get('question_indicators', {})), 
-                    #row.get('is_spam', False),
-                    bool(row['is_spam']),
-                    row['id']
-            ))
-        with conn:
-            with conn.cursor() as cursor:
-                for i in range(0, len(update_data), batch_size):
-                    batch = update_data[i:i + batch_size]
-                    try:
-                        cursor.executemany(
-                            """UPDATE facebook_comments
-                               SET detected_language = %s,
-                                   sentiment_label = %s,
-                                   sentiment_score = %s,
-                                   is_question = %s,
-                                   question_indicators = %s,
-                                   is_spam = %s
-                               WHERE id = %s""",
-                            batch
-                        )
-                        updates_count += len(batch)
-                        #updates_count += cursor.rowcount
-                        print(f"Updated {updates_count}/{len(valid_df)} records...")
-                    except Exception as e:
-                        print(f"Error updating batch starting at record {i}: {e}")
-                        print(f"Problematic batch data: {batch}")
-                        conn.rollback()
-                        raise
-        print(f"Successfully updated {updates_count} records")
-    except Exception as e:
-        print(f"Error in database update process: {e}")
-    finally:
-        conn.close()
-
-'''
-
+    
 def update_database(valid_df):
     print(f"Updating {len(valid_df)} records in database...")
     conn = connect_to_db()
@@ -169,15 +88,7 @@ def update_database(valid_df):
                 
             is_spam = bool(row['is_spam']) if pd.notna(row['is_spam']) else None
             
-            update_data.append((
-                detected_lang,
-                sentiment_label,
-                sentiment_score,
-                is_question,
-                question_indicators,
-                is_spam,
-                row['id']
-            ))
+            update_data.append((detected_lang, sentiment_label, sentiment_score, is_question, question_indicators, is_spam, row['id']))
 
         with conn:
             with conn.cursor() as cursor:
@@ -213,12 +124,7 @@ def update_database(valid_df):
             conn.close()
 
 def check_database_connection():    
-    import psycopg2
-    conn = psycopg2.connect(dbname='page_comments',
-            user='scrapper_user',
-            password='scRaPPer_user',
-            host='10.20.10.42',
-            port='5432')
+    conn = psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT)
     cur = conn.cursor()
     cur.execute("""
         SELECT EXISTS (
@@ -229,7 +135,6 @@ def check_database_connection():
     table_exists = cur.fetchone()[0]
     print(f"Table exists: {table_exists}")
     
-    # Check row count
     cur.execute("SELECT COUNT(*) FROM facebook_comments;")
     count = cur.fetchone()[0]
     print(f"Total comments in DB: {count}")
@@ -242,7 +147,6 @@ def extract_comments():
     if not conn:
         return None
     
-    #query = "SELECT id, post_id, commenter_name, comment_time, comment_message FROM facebook_comments;"
     query = """
             SELECT id, post_id, commenter_name, comment_time, comment_message 
             FROM facebook_comments  
@@ -255,7 +159,6 @@ def extract_comments():
         """
     try:
         df = pd.read_sql_query(query, conn)
-        # Remove null, empty, or whitespace-only comments
         df = df[df['comment_message'].notna()]                       # Drop NaNs
         df = df[df['comment_message'].str.strip().astype(bool)]     # Drop empty/whitespace
 
@@ -568,32 +471,9 @@ def is_emoji(char):
 
     return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
 
-'''
-def is_spam_comment(text: str) -> bool:
-    if not isinstance(text, str) or not text.strip():
-        return False
-
-    hashtag_count = text.count('#')
-    link_count = len(re.findall(r'(https?://\S+|www\.\S+)', text))
-    promotional_phrases = [
-        'join', 'subscribe', 'follow', 'click here', 'link in bio',
-        'اشترك', 'تابع', 'رابط', 'انضم', 'سجل'
-    ]
-        
-    is_promotional = any(phrase in text.lower() for phrase in promotional_phrases)
-    return hashtag_count >= 3 or link_count >= 1 or is_promotional
-'''
 def is_emoji(char):
-
     return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
-'''
-def is_emoji_only(text):
-    if not isinstance(text, str):
-        return False
-    #cleaned = text.strip()
-    cleaned = ''.join(c for c in text if not unicodedata.category(c).startswith('C')).strip()
-    return len(cleaned) > 0 and all(is_emoji(c) for c in cleaned if c.strip())
-'''
+
 def is_emoji_only(text):
     if not isinstance(text, str):
         logging.debug(f"[is_emoji_only] Input is not a string: {text}")
@@ -650,137 +530,6 @@ def remove_mentions(text):
     return text.strip()
 
 # Example usage:
-# df['comment_message'] = df['comment_message'].apply(remove_mentions)
-
-'''def analyze_sentiment(text, lang, sentiment_models):
-    """Enhanced sentiment analysis with proper numerical stability"""
-    if pd.isna(text) or text == '[null]' or not isinstance(text, str) or not text.strip():
-        return {'label': 'neutral', 'score': 0.5}
-    
-    cleaned_text = clean_text(text)
-    if not cleaned_text:
-        return {'label': 'neutral', 'score': 0.5}
-
-    # Load sentiment maps if not already loaded
-    if not hasattr(analyze_sentiment, 'prayer_terms_map'):
-        analyze_sentiment.prayer_terms_map, analyze_sentiment.emoji_sentiment_map = load_sentiment_maps()
-    
-    # Determine which model to use
-    model_key = lang
-    if lang not in sentiment_models or lang == 'unknown':
-        model_key = 'ar' if re.search(r'[\u0600-\u06FF]', cleaned_text) else 'en'
-    
-    # Load or retrieve model from cache
-    if model_key not in model_cache:
-        model_name = sentiment_models[model_key]
-        tokenizer, model = load_model(model_name)
-        if tokenizer is None or model is None:
-            return {'label': 'neutral', 'score': 0.5}
-        model_cache[model_key] = (tokenizer, model)
-    else:
-        tokenizer, model = model_cache[model_key]
-    
-    try:
-        # Tokenize input with proper truncation
-        max_length = tokenizer.model_max_length if hasattr(tokenizer, 'model_max_length') else 512
-        inputs = tokenizer(cleaned_text, return_tensors="pt", truncation=True, max_length=max_length, padding=True)
-        
-        # Get model outputs - ensure we're using PyTorch tensors
-        with torch.no_grad():
-            outputs = model(**inputs)
-        
-        # Convert logits to numpy with proper numerical stability
-        logits = outputs.logits
-        if isinstance(logits, torch.Tensor):
-            logits_np = logits.detach().cpu().numpy().astype(np.float64)
-        else:
-            # Handle TF tensors if needed
-            import tensorflow as tf
-            if tf.is_tensor(logits):
-                logits_np = logits.numpy().astype(np.float64)
-            else:
-                logits_np = np.array(logits, dtype=np.float64)
-        
-        # Stable softmax calculation
-        logits_np = logits_np - np.max(logits_np, axis=1, keepdims=True) # Subtract max for numerical stability
-        exp_logits = np.exp(logits_np)
-        scores = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
-
-        scores = scores[0]  # Get first batch
-        predicted_label = int(np.argmax(scores))
-        confidence_score = float(np.max(scores))
-
-        scores = np.array(scores, dtype=np.float64).flatten()  # Ensure 1D float64 array
-        if not isinstance(scores, (np.ndarray, list)) or len(scores) == 0:
-            raise ValueError("Empty or invalid scores received for sentiment classification.")
-
-        if len(scores) == 2:  # Binary classification
-            sentiment = 'positive' if scores[1] > scores[0] else 'negative'
-            sentiment_score = float(scores[1] if scores[1] > scores[0] else 1 - scores[1])
-
-        elif len(scores) == 3:  # 3-class
-            idx = int(np.argmax(scores))
-            sentiment_labels = ['negative', 'neutral', 'positive']
-            sentiment = sentiment_labels[idx]
-            sentiment_score = float(scores[idx])
-
-        elif len(scores) == 5:  # 5-class
-            idx = int(np.argmax(scores))
-            sentiment_labels = ['very negative', 'negative', 'neutral', 'positive', 'very positive']
-            if idx < 2:
-                sentiment = 'negative'
-                sentiment_score = 0.25 * (2 - idx)
-            elif idx > 2:
-                sentiment = 'positive'
-                sentiment_score = 0.5 + 0.25 * (idx - 2)
-            else:
-                sentiment = 'neutral'
-                sentiment_score = 0.5
-
-        else:  # Fallback
-            sentiment = 'neutral'
-            sentiment_score = 0.5
-
-        # Prayer-based adjustment
-        prayer_score_adjustment = 0.0
-        for term, term_score in analyze_sentiment.prayer_terms_map.items():
-            if term.lower() in cleaned_text.lower():
-                try:
-                    weight = min(1.0, 10.0 / len(cleaned_text.split()))
-                    prayer_score_adjustment += float(term_score) * weight
-                except Exception as e:
-                    logging.warning(f"Prayer term score error: {e}")
-
-        # Emoji-based adjustment
-        emoji_score_adjustment = 0.0
-        for emoji_char in [c for c in cleaned_text if is_emoji(c)]:
-            if emoji_char in analyze_sentiment.emoji_sentiment_map:
-                try:
-                    emoji_score_adjustment += float(analyze_sentiment.emoji_sentiment_map[emoji_char]) * 0.15
-                except Exception as e:
-                    logging.warning(f"Emoji score error: {e}")
-
-        # Final sentiment score with bounds
-        adjusted_score = float(sentiment_score) + prayer_score_adjustment + emoji_score_adjustment
-        final_score = max(0.0, min(1.0, adjusted_score))
-
-        # Final label
-        if final_score < 0.4:
-            final_sentiment = 'negative'
-        elif final_score > 0.6:
-            final_sentiment = 'positive'
-        else:
-            final_sentiment = 'neutral'
-
-        return {'label': final_sentiment, 'score': final_score}
-
-    except Exception as e:
-        logging.error(f"[Sentiment] Error for lang={lang}, model={model_key}: {str(e)}")
-        logging.error(traceback.format_exc())
-        print(f"Text sample causing error: {cleaned_text[:50]}...")
-        print(f"Error: {e}")
-        return {'label': 'neutral', 'score': 0.5}
-'''
 QUESTION_PATTERNS = [
     r'\?',                    # Question mark
     r'^[آأ]',                 # Starts with آ or أ (Arabic)
@@ -836,10 +585,6 @@ def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
         'do', 'does', 'did', 'is', 'are', 'can', 'could', 'would',
         'est-ce', 'avez', 'as', 'es', 'suis'
     }
-    '''for lang, words in GLOBAL_QUESTION_WORDS.items():
-        if any(word in text_lower for word in words):
-            indicators['question_word'] = True
-            break'''
     
     # Check for inversion/question prefixes (French/English)
     if cleaned_text.startswith(('est-ce que', 'is it', 'do you', 'did you', 'are you')):
@@ -876,12 +621,6 @@ def analyze_questions(df):
         for word in GLOBAL_QUESTION_WORDS
         if word in all_questions
     }
-    '''
-    print("\nTop Question Words:")
-    #for word, count in sorted(question_word_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
-    for word, count in sorted(question_word_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
-        print(f"  {word}: {count}")
-    '''
     
     # Sentiment comparison
     print("\nSentiment Comparison:")
@@ -949,9 +688,6 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
     prayer_score_adjustment = 0.0
     emoji_score_adjustment = 0.0
 
-     #this could neutralise emoji only comments !!!!!
-    '''if pd.isna(text) or text == '[null]' or not isinstance(text, str) or not text.strip():
-        return {'label': 'neutral', 'score': 0.5}'''
     # First check for spam
     if is_spam_comment(text):
         return {'label': None, 'score': None, 'spam': True}
@@ -986,31 +722,6 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
             return {'label': sentiment, 'score': avg_score, 'spam': False}
         else:
             return {'label': 'neutral', 'score': 0.5, 'spam': False}
-        
-    '''
-    # Si le texte contient uniquement des emojis connus
-    if all(is_emoji(c) for c in text if c.strip()):
-        emoji_score = 0.0
-        count = 0
-        for emoji_char in text:
-            if emoji_char in analyze_sentiment.emoji_sentiment_map:
-                try:
-                    emoji_score += float(analyze_sentiment.emoji_sentiment_map[emoji_char])
-                    count += 1
-                except Exception as e:
-                    logging.warning(f"Emoji score error: {e}")
-        if count > 0:
-            avg_score = emoji_score / count
-            final_score = max(0.0, min(1.0, avg_score))
-            if final_score < 0.4:
-                sentiment = 'negative'
-            elif final_score > 0.6:
-                sentiment = 'positive'
-            else:
-                sentiment = 'neutral'
-            return {'label': sentiment, 'score': final_score}
-        
-    '''
     cleaned_text = clean_text(text)
 
     cleaned_text = remove_mentions(cleaned_text)
@@ -1026,7 +737,6 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
         model_key = 'ar' if re.search(r'[\u0600-\u06FF]', cleaned_text) else 'darija'
    
     if lang in ['ar', 'darija']:
-        #sentiment_pipeline = pipeline(task="text-classification",model="Abdo36/Arabert-Sentiment-Analysis-ArSAS")
         sentiment_pipeline =pipeline(
                     task="text-classification",
                     model="/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/",
@@ -1289,123 +999,7 @@ def save_analysis_results(results):
     with open(summary_file, 'w', encoding='utf-8') as f:
         json.dump(summary_json, f, cls=NumpyEncoder, ensure_ascii=False, indent=2)
     print(f"Saved summary to {summary_file}")
-    '''
-def analyze_facebook_comments():
-
-    all_results = {
-        'detailed': [],
-        'summary': {
-            'total_comments': 0,
-            'valid_comments': 0,
-            'language_distribution': {},
-            'sentiment_distribution': {},
-            'avg_sentiment_score_by_language': {},
-            'topics_by_language': {},
-            'question_analysis': {}
-        }
-    }
-    batch_count = 0
-    print("Starting Facebook comment analysis...")
-   
-    while True:
-        batch_count += 1
-        print(f"\nProcessing batch {batch_count}...")
-        df = extract_comments()
-        if df is None or len(df) == 0:
-            print("No more comments to process")
-            break 
-        print(f"Extracted {len(df)} comments from database")
-        
-        df['comment_message'] = df['comment_message'].replace('[null]', np.nan)
-        # hna we can add more cleaning if needed
-        df['clean_message'] = df['comment_message'].apply(clean_text).str.lower()
-        df = df[df['clean_message'].str.strip().str.len() > 0]
-        valid_comments = df['clean_message'].apply(lambda x: len(str(x).strip()) > 0).sum()
-        print(f"Valid comments in batch: {len(df)}")
-        print(f"Valid comments with content: {valid_comments}")
-        
-        print("Detecting languages...")
-        df['detected_language'] = df['comment_message'].apply(detect_language)
-        
-        lang_counts = df['detected_language'].value_counts()
-        print("Language distribution:")
-        for lang, count in lang_counts.items():
-            print(f"  {lang}: {count} comments ({count/len(df)*100:.1f}%)")
-        
-        print("Loading sentiment models...")
-        sentiment_models = load_sentiment_models()
-        prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
-        analyze_sentiment.prayer_terms_map = prayer_terms_map
-        analyze_sentiment.emoji_sentiment_map = emoji_sentiment_map
-        
-        print("Analyzing sentiment...")
-        df['sentiment'] = df.apply(
-            lambda row: analyze_sentiment(row['comment_message'], row['detected_language'], sentiment_models), 
-            axis=1
-        )
-        
-        df['sentiment_label'] = df['sentiment'].apply(lambda x: x['label'] if isinstance(x, dict) else 'neutral')
-        df['sentiment_score'] = df['sentiment'].apply(lambda x: x['score'] if isinstance(x, dict) else 0.5)
-        df['sentiment_label'] = df['sentiment_label'].str.lower()
-
-        sentiment_counts = df['sentiment_label'].value_counts()
-        print("Sentiment distribution:")
-        for sentiment, count in sentiment_counts.items():
-            print(f"  {sentiment}: {count} comments ({count/len(df)*100:.1f}%)")
-        
-        update_database(df)
-        print("Extracting topics by language...")
-        languages = df['detected_language'].unique()
-        topics_by_language = {}
-        for lang in languages:
-            if lang in ['en', 'fr', 'ar', 'darija']:
-                topics = extract_topics(df, lang)
-                if topics:
-                    topics_by_language[lang] = topics
-                    print(f"Extracted {len(topics)} topics for language {lang}")
-                else:
-                    print(f"No topics extracted for language {lang}")
-            else:
-                print(f"Skipping unsupported language: {lang}")
-        
-        try:
-            with open('topics_by_language.json', 'w', encoding='utf-8') as f:
-                json.dump(topics_by_language, f, ensure_ascii=False, cls=NumpyEncoder)
-            print("Topics saved to topics_by_language.json")
-        except Exception as e:
-            print(f"Error saving topics to JSON: {e}")
-        
-        results = {
-            'detailed': df.to_dict(orient='records'),
-            'summary': {
-                'total_comments': len(df),
-                'valid_comments': valid_comments,
-                'language_distribution': df['detected_language'].value_counts().to_dict(),
-                'sentiment_distribution': df['sentiment_label'].value_counts().to_dict(),
-                'avg_sentiment_score_by_language': df.groupby('detected_language')['sentiment_score'].mean().to_dict(),
-                'topics_by_language': {lang: extract_topics(df, lang) for lang in df['detected_language'].unique()}
-            }
-        }
-
-        results = analyze_facebook_comments()
-        question_stats = analyze_questions(results['detailed'])
-        results['summary']['question_analysis'] = question_stats
-        save_analysis_results(results)
-
-        question_stats = analyze_questions(df)
-        if question_stats:
-            results['summary']['question_analysis'] = question_stats
-        generate_analysis_report(results)
-        print("\n=== ANALYSIS SUMMARY ===")
-        print(f"Total comments processed: {len(df)}")
-        print(f"Languages detected: {', '.join(df['detected_language'].unique())}")
-        print(f"Sentiment distribution: {dict(df['sentiment_label'].value_counts())}")
-        print(f"Results saved to: sentiment_analysis_results.csv and sentiment_analysis_summary.json")
-       
-        print("Analysis completed successfully!")
-        return "Analysis completed successfully!"
-'''
-
+    
 def analyze_facebook_comments():
     empty_batch_count = 0
     max_empty_batches = 5
@@ -1462,30 +1056,6 @@ def analyze_facebook_comments():
         #print(f"[Batch {batch_count}] Extracted: {len(df)} | Valid after cleaning: {valid_comments}")
         print(f"Extracted {len(df)} comments from database")
 
-        '''if len(df[df['comment_message'].str.strip().astype(bool)]) == 0:
-            empty_batch_count += 1
-            if empty_batch_count >= max_empty_batches:
-                print("Stopping - too many consecutive batches with no valid comments")
-                break
-            continue
-        else:
-            empty_batch_count = 0
-        '''
-        '''
-        if valid_comments == 0:
-            empty_batch_count += 1
-            print(f"No valid comments found in batch {batch_count} ({empty_batch_count}/{max_empty_batches})")
-            if empty_batch_count >= max_empty_batches:
-                print("Stopping - too many consecutive batches with no valid comments")
-                break
-            continue
-        else:
-            empty_batch_count = 0
-
-        #valid_comments = df['comment_message'].apply(lambda x: len(str(x).strip()) > 0).sum()
-        print(f"Valid comments in batch: {len(df)}")
-        print(f"Valid comments with content: {valid_comments}")
-        '''
         if len(valid_df) == 0:
             empty_batch_count += 1
             print(f"No valid comments in batch {batch_count} ({empty_batch_count}/{max_empty_batches})")
@@ -1516,26 +1086,12 @@ def analyze_facebook_comments():
         # Sentiment analysis
        
         print("Analyzing sentiment...")
-        '''
-        valid_df['sentiment'] = valid_df.apply(
-            lambda row: analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models, emoji_sentiment_map, prayer_terms_map),
-            axis=1
-        )
-        '''
         valid_df['sentiment'] = valid_df.apply(
             lambda row: analyze_emoji_sentiment(row['comment_message'], emoji_sentiment_map)
             if row['is_emoji_only']
             else analyze_sentiment(row['cleaned_message'], row['detected_language'], sentiment_models, emoji_sentiment_map, prayer_terms_map),
             axis=1
         )
-        '''
-        df['sentiment_label'] = df['sentiment'].apply(lambda x: x['label'].lower() if isinstance(x, dict) else 'neutral')
-        df['sentiment_score'] = df['sentiment'].apply(lambda x: x['score'] if isinstance(x, dict) else 0.5)
-        df['is_spam'] = df['sentiment'].apply(lambda x: x.get('spam', False) if isinstance(x, dict) else False)
-        df.loc[df['is_spam'], 'sentiment_label'] = None
-        df.loc[df['is_spam'], 'sentiment_score'] = None 
-    #   df_filtered = df[~df['is_spam']]
-        '''
         # Extract sentiment results
         valid_df['sentiment_label'] = valid_df['sentiment'].apply(
             lambda x: x['label'].lower() if isinstance(x, dict) else 'neutral'
@@ -1654,96 +1210,121 @@ def analyze_facebook_comments():
 
     # Save final results
     save_analysis_results(all_results)
-    generate_strategic_report_with_comments(df)
+    generate_strategic_report_from_posts(df)
     
     print("\nAnalysis completed successfully!")
     return all_results
 
-def generate_strategic_report_with_comments(df):
+def get_pg_connection():
+    try:
+        return psycopg2.connect(dbname=DB_NAME, user=DB_USER, password=urllib.parse.unquote(DB_PASSWORD), host=DB_HOST, port=DB_PORT)
+    except Exception as e:
+        print("❌ PostgreSQL connection error:", e)
+        return None
     
-    print("\nGenerating strategic improvement report with raw comments...")
+def generate_strategic_report_from_posts(df):
+    print("\n📊 Generating post-based strategic improvement report...")
 
-    # 1️⃣ Filtrage selon tes critères
-    # Vérifie la présence des colonnes et complète si besoin
-    required_columns = ['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question', 'commenter_name', 'is_spam']
-    for col in required_columns:
+    required_cols = ['post_id', 'commenter_name', 'comment_message']
+    for col in required_cols:
         if col not in df.columns:
-            df[col] = None  # Ajoute la colonne manquante avec valeurs None
+            print(f"❌ Missing column: {col}")
+            return
 
-    # Filtrage selon tes critères (après ajout sécurisé des colonnes)
-    filtered_df = df[
+    df = df[
         (df['commenter_name'] != 'Hasnaoui Private Hospital') &
-        (df['is_spam'] != True)
-    ][['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question']].copy()
+        (df.get('is_spam', False) != True)
+    ].copy()
 
-    comment_records = filtered_df.to_dict(orient='records')
+    conn = get_pg_connection()
+    if conn is None:
+        return
 
-    # EXTRACTION DES QUESTIONS
-    questions_df = filtered_df[filtered_df['is_question'] == True].copy()
-    questions_list = questions_df['comment_message'].tolist()
+    def get_post_message(post_id):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT post_message FROM facebook_posts WHERE post_id = %s LIMIT 1", (post_id,))
+                row = cur.fetchone()
+                return row[0].strip() if row and row[0] else "[Post message not found]"
+        except Exception as e:
+            print(f"❌ Error fetching post message for {post_id}: {e}")
+            return "[Post message error]"
 
-    # Conversion en liste de dictionnaires pour l'API
-    comment_records = filtered_df.to_dict(orient='records')
+    posts_and_comments = []
+    for post_id, group in df.groupby('post_id'):
+        comments = group['comment_message'].dropna().tolist()
+        if not comments:
+            continue
+        post_message = get_post_message(post_id)
+        posts_and_comments.append({
+            "post_id": post_id,
+            "post_message": post_message,
+            "comments": comments
+        })
 
-    # 2️⃣ Conversion en liste de dictionnaires (plus propre pour LLM)
-    comment_records = filtered_df.to_dict(orient='records')
+    conn.close()
 
-    # 3️⃣ Construction du prompt
+    if not posts_and_comments:
+        print("❌ No valid comments to generate report.")
+        return
+
     prompt = f"""
-You are a multilingual expert in marketing strategy, customer sentiment analysis, and customer experience optimization.
+You are a healthcare digital marketing strategist specializing in social media feedback analysis.
 
-You will analyze real Facebook customer comments collected in multiple languages: French, English, Arabic and Algerian Arabic (Darija).
+You are analyzing real Facebook posts and associated patient comments from "Hasnaoui Private Hospital" in Sidi Bel Abbès, Algeria.
 
-Here is a dataset of customer comments (message, language, sentiment label, question detection and post id context):
+Each item below contains:
+- The original Facebook post message
+- A list of real comments received in response (feedback, questions, praise, complaints, etc.)
 
-{json.dumps(comment_records, indent=2, ensure_ascii=False)}
+Please:
+1️⃣ Analyze each post's tone, clarity, emotional impact.
+2️⃣ Identify recurring themes or missed engagement opportunities in comments or frequent questions.
+3️⃣ Propose improvements in content strategy and patient interaction.
+4️⃣ Suggest specific answers or FAQ entries to address common questions.
+5️⃣ Recommend new post ideas based on observed needs or missed topics.
+6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals.
 
-Here is a list of questions frequently asked by customers:
-{json.dumps(questions_list, indent=2, ensure_ascii=False)}
-
-Based on this data, please generate:
-1️⃣ Marketing strategy recommendations.
-2️⃣ Customer engagement improvements.
-3️⃣ Content and communication optimizations.
-4️⃣ Language-specific or cultural insights.
-5️⃣ Suggestions for potential answers or communication scripts to address the most frequently asked questions.
+Dataset:
+{json.dumps(posts_and_comments, indent=2, ensure_ascii=False)}
 """
 
-    # 4️⃣ Construction de la requête API OpenRouter
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
-    api_key =  "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" 
+    api_key = "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" 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
     payload = {
-        #"model": "mistralai/mistral-7b-instruct",
-        "model": "opengvlab/internvl3-14b:free",
+        #"model": "mistralai/mixtral-8x7b-instruct",
+        #"model": "opengvlab/internvl3-14b:free",
+        #"model": "deepseek/deepseek-r1-0528:free", #good
+        "model": "deepseek/deepseek-chat-v3-0324:free",
+
         "messages": [
-            {"role": "system", "content": "You are a strategic marketing expert."},
+            {"role": "system", "content": "You are a senior strategic marketing consultant for the healthcare sector."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.7
     }
 
-    # 5️⃣ Appel de l'API
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
         response.raise_for_status()
-
         result = response.json()
-        generated_text = result['choices'][0]['message']['content']
-        print("\n=== MARKETING RECOMMENDATIONS ===\n")
-        print(generated_text)
 
-        report_filename = f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(report_filename, 'w', encoding='utf-8') as f:
-            f.write(generated_text)
-        print(f"\nReport saved to {report_filename}")
+        report_text = result['choices'][0]['message']['content']
+        print("\n✅ Strategic Report Generated:\n")
+        print(report_text)
+
+        filename = f"strategic_post_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(report_text)
+        print(f"\n📄 Report saved to {filename}")
 
     except requests.exceptions.RequestException as e:
-        print("API request failed:", e)
+        print(f"❌ API request failed: {e}")
 # Run the analysis
 if __name__ == "__main__":
     analyze_facebook_comments()
