@@ -5,6 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
 import tensorflow as tf
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 import keras
+import urllib.parse
 import requests
 from datetime import datetime
 from arabic_reshaper import reshape
@@ -213,7 +214,7 @@ def update_database(valid_df):
             conn.close()
 
 def check_database_connection():    
-    import psycopg2
+
     conn = psycopg2.connect(dbname='page_comments',
             user='postgres',
             password='Azerty123**',
@@ -902,6 +903,7 @@ def analyze_questions(df):
     }
 
 emoji_sentiment_map = load_emoji_terms_map()
+prayer_terms_map = load_prayer_terms_map()
 def analyze_emoji_sentiment(text, emoji_sentiment_map):
 
     if emoji_sentiment_map is None:
@@ -1110,11 +1112,11 @@ def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_
         
         # Prayer-based adjustment
         
-        for term, term_score in analyze_sentiment.prayer_terms_map.items():
+        for term, score in analyze_sentiment.prayer_terms_map.items():
             if term.lower() in cleaned_text.lower():
                 try:
                     weight = min(1.0, 10.0 / len(cleaned_text.split()))
-                    prayer_score_adjustment += float(term_score) * weight
+                    prayer_score_adjustment += float(score) * weight
                 except Exception as e:
                     logging.warning(f"Prayer term score error: {e}") 
         # Emoji-based adjustment
@@ -1426,7 +1428,7 @@ def analyze_facebook_comments():
 
     print("Loading sentiment models...")
     sentiment_models = load_sentiment_models()
-    #prayer_terms_map, emoji_sentiment_map = load_sentiment_maps()
+    
     analyze_sentiment.prayer_terms_map =  load_prayer_terms_map()
     analyze_sentiment.emoji_sentiment_map = load_emoji_terms_map()
 
@@ -1654,96 +1656,128 @@ def analyze_facebook_comments():
 
     # Save final results
     save_analysis_results(all_results)
-    generate_strategic_report_with_comments(df)
-    
+    #generate_strategic_report_with_comments(df)
+    generate_strategic_report_from_posts(df)
+
     print("\nAnalysis completed successfully!")
     return all_results
 
-def generate_strategic_report_with_comments(df):
+def get_pg_connection():
+    try:
+        return psycopg2.connect(
+            dbname="page_comments",
+            user="postgres",
+            password=urllib.parse.unquote("Azerty123**"),
+            host="localhost",
+            port=5432
+        )
+    except Exception as e:
+        print("❌ PostgreSQL connection error:", e)
+        return None
     
-    print("\nGenerating strategic improvement report with raw comments...")
+def generate_strategic_report_from_posts(df):
+    print("\n📊 Generating post-based strategic improvement report...")
 
-    # 1️⃣ Filtrage selon tes critères
-    # Vérifie la présence des colonnes et complète si besoin
-    required_columns = ['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question', 'commenter_name', 'is_spam']
-    for col in required_columns:
+    required_cols = ['post_id', 'commenter_name', 'comment_message']
+    for col in required_cols:
         if col not in df.columns:
-            df[col] = None  # Ajoute la colonne manquante avec valeurs None
+            print(f"❌ Missing column: {col}")
+            return
 
-    # Filtrage selon tes critères (après ajout sécurisé des colonnes)
-    filtered_df = df[
+    df = df[
         (df['commenter_name'] != 'Hasnaoui Private Hospital') &
-        (df['is_spam'] != True)
-    ][['comment_message', 'post_id', 'detected_language', 'sentiment_label', 'is_question']].copy()
+        (df.get('is_spam', False) != True)
+    ].copy()
 
-    comment_records = filtered_df.to_dict(orient='records')
+    conn = get_pg_connection()
+    if conn is None:
+        return
 
-    # EXTRACTION DES QUESTIONS
-    questions_df = filtered_df[filtered_df['is_question'] == True].copy()
-    questions_list = questions_df['comment_message'].tolist()
+    def get_post_message(post_id):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT post_message FROM facebook_posts WHERE post_id = %s LIMIT 1", (post_id,))
+                row = cur.fetchone()
+                return row[0].strip() if row and row[0] else "[Post message not found]"
+        except Exception as e:
+            print(f"❌ Error fetching post message for {post_id}: {e}")
+            return "[Post message error]"
 
-    # Conversion en liste de dictionnaires pour l'API
-    comment_records = filtered_df.to_dict(orient='records')
+    posts_and_comments = []
+    for post_id, group in df.groupby('post_id'):
+        comments = group['comment_message'].dropna().tolist()
+        if not comments:
+            continue
+        post_message = get_post_message(post_id)
+        posts_and_comments.append({
+            "post_id": post_id,
+            "post_message": post_message,
+            "comments": comments
+        })
 
-    # 2️⃣ Conversion en liste de dictionnaires (plus propre pour LLM)
-    comment_records = filtered_df.to_dict(orient='records')
+    conn.close()
 
-    # 3️⃣ Construction du prompt
+    if not posts_and_comments:
+        print("❌ No valid comments to generate report.")
+        return
+
     prompt = f"""
-You are a multilingual expert in marketing strategy, customer sentiment analysis, and customer experience optimization.
+You are a healthcare digital marketing strategist specializing in social media feedback analysis.
 
-You will analyze real Facebook customer comments collected in multiple languages: French, English, Arabic and Algerian Arabic (Darija).
+You are analyzing real Facebook posts and associated patient comments from "Hasnaoui Private Hospital" in Sidi Bel Abbès, Algeria.
 
-Here is a dataset of customer comments (message, language, sentiment label, question detection and post id context):
+Each item below contains:
+- The original Facebook post message
+- A list of real comments received in response (feedback, questions, praise, complaints, etc.)
 
-{json.dumps(comment_records, indent=2, ensure_ascii=False)}
+Please:
+1️⃣ Analyze each post's tone, clarity, emotional impact.
+2️⃣ Identify recurring themes or missed engagement opportunities in comments or frequent questions.
+3️⃣ Propose improvements in content strategy and patient interaction.
+4️⃣ Suggest specific answers or FAQ entries to address common questions.
+5️⃣ Recommend new post ideas based on observed needs or missed topics.
+6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals.
 
-Here is a list of questions frequently asked by customers:
-{json.dumps(questions_list, indent=2, ensure_ascii=False)}
-
-Based on this data, please generate:
-1️⃣ Marketing strategy recommendations.
-2️⃣ Customer engagement improvements.
-3️⃣ Content and communication optimizations.
-4️⃣ Language-specific or cultural insights.
-5️⃣ Suggestions for potential answers or communication scripts to address the most frequently asked questions.
+Dataset:
+{json.dumps(posts_and_comments, indent=2, ensure_ascii=False)}
 """
 
-    # 4️⃣ Construction de la requête API OpenRouter
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
-    api_key =  "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" 
+    api_key = "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" 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
     payload = {
-        #"model": "mistralai/mistral-7b-instruct",
-        "model": "opengvlab/internvl3-14b:free",
+        #"model": "mistralai/mixtral-8x7b-instruct",
+        #"model": "opengvlab/internvl3-14b:free",
+        #"model": "deepseek/deepseek-r1-0528:free", #good
+        "model": "deepseek/deepseek-chat-v3-0324:free",
+
         "messages": [
-            {"role": "system", "content": "You are a strategic marketing expert."},
+            {"role": "system", "content": "You are a senior strategic marketing consultant for the healthcare sector."},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.7
     }
 
-    # 5️⃣ Appel de l'API
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=180)
         response.raise_for_status()
-
         result = response.json()
-        generated_text = result['choices'][0]['message']['content']
-        print("\n=== MARKETING RECOMMENDATIONS ===\n")
-        print(generated_text)
 
-        report_filename = f"marketing_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(report_filename, 'w', encoding='utf-8') as f:
-            f.write(generated_text)
-        print(f"\nReport saved to {report_filename}")
+        report_text = result['choices'][0]['message']['content']
+        print("\n✅ Strategic Report Generated:\n")
+        print(report_text)
+
+        filename = f"strategic_post_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(report_text)
+        print(f"\n📄 Report saved to {filename}")
 
     except requests.exceptions.RequestException as e:
-        print("API request failed:", e)
+        print(f"❌ API request failed: {e}")
 # Run the analysis
 if __name__ == "__main__":
     analyze_facebook_comments()
