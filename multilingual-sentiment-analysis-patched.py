@@ -1,9 +1,5 @@
 import os
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
 import tensorflow as tf
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 import requests
 from datetime import datetime
 import urllib.parse
@@ -12,7 +8,6 @@ import traceback
 import transformers
 from transformers import pipeline, AutoTokenizer
 from transformers import AutoModelForSequenceClassification
-transformers.logging.set_verbosity_error()
 import langid
 from scipy.special import softmax
 import numpy as np
@@ -30,13 +25,29 @@ import nltk
 from nltk.corpus import stopwords
 import json
 import warnings
-warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 import logging
 from transformers import pipeline
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.lib.colors import HexColor
+from reportlab.platypus.flowables import HRFlowable
+import markdown2
+from email.message import EmailMessage
+import smtplib
+import json
+import csv
 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 logging.basicConfig(filename='sentiment_analysis.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 tf.experimental.numpy.experimental_enable_numpy_behavior()
+transformers.logging.set_verbosity_error()
 
 DB_NAME = 'page_comments'
 DB_USER = 'scrapper_user'
@@ -142,6 +153,7 @@ def check_database_connection():
     conn.close()
 
 check_database_connection()
+
 def extract_comments():
     conn = connect_to_db()
     if not conn:
@@ -168,7 +180,6 @@ def extract_comments():
         return None
     finally:
         conn.close()
-import json
 
 def extract_commenter_name(raw_json):
     try:
@@ -292,6 +303,7 @@ def debug_cleaning(df):
         print(f"Step4 (stripped): {df.loc[sample_idx, 'step4_stripped']}")
     
     return df
+
 def detect_language(text):
 
     if pd.isna(text) or text == '[null]' or not isinstance(text, str) or not text.strip():
@@ -417,8 +429,6 @@ def load_sentiment_models():
         'darija': "/home/benslimane_m/scrapper/scrapper_2/Arabert-Sentiment-Offline/"
 
     }
-import csv
-import csv
 
 def load_emoji_terms_map():
     emoji_sentiment_map = {}
@@ -466,11 +476,6 @@ def load_prayer_terms_map():
 
     return prayer_terms_map
 
-
-def is_emoji(char):
-
-    return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
-
 def is_emoji(char):
     return char in emoji.UNICODE_EMOJI['en'] if hasattr(emoji, 'UNICODE_EMOJI') else emoji.demojize(char) != char
 
@@ -508,7 +513,6 @@ def is_spam_comment(text: str) -> bool:
     ]
     matches = sum(bool(re.search(pattern, text_without_emojis, re.IGNORECASE)) for pattern in spam_patterns)
     return matches >= 1  # At least 2 spam indicators  we can change it if we want to be more or less strict
-
 
 def remove_mentions(text):
 
@@ -597,6 +601,7 @@ def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
     is_question = any(indicators.values())
     
     return is_question, indicators
+
 def analyze_questions(df):
     questions_df = df[df['is_question']]
     
@@ -640,7 +645,6 @@ def analyze_questions(df):
         }
     }
 
-emoji_sentiment_map = load_emoji_terms_map()
 def analyze_emoji_sentiment(text, emoji_sentiment_map):
 
     if emoji_sentiment_map is None:
@@ -671,7 +675,6 @@ def analyze_emoji_sentiment(text, emoji_sentiment_map):
         return {'label': sentiment, 'score': avg_score, 'spam': False}
     else:
         return {'label': 'neutrall', 'score': 0.05, 'spam': False}
-
 
 def analyze_sentiment(text, lang, sentiment_models, emoji_sentiment_map, prayer_terms_map):
 
@@ -890,6 +893,7 @@ def get_stopwords(lang):
     except Exception as e:
         print(f"Error getting stopwords for language {lang}: {e}")
         return []
+
 def extract_topics(df, lang):
     lang_df = df[df['detected_language'] == lang]
     
@@ -1296,12 +1300,17 @@ Each item below contains:
 - A list of real comments received in response (feedback, questions, praise, complaints, etc.)
 
 Please:
-1️⃣ Analyze each post's tone, clarity, emotional impact.
-2️⃣ Identify recurring themes or missed engagement opportunities in comments or frequent questions.
-3️⃣ Propose improvements in content strategy and patient interaction.
-4️⃣ Suggest specific answers or FAQ entries to address common questions.
-5️⃣ Recommend new post ideas based on observed needs or missed topics.
-6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals and a deeper dive into competitor benchmarks
+⿡ Analyze each post's tone, clarity, emotional impact.
+⿢ Identify recurring themes or missed engagement opportunities in comments or frequent questions.
+⿣ Propose improvements in content strategy and patient interaction.
+⿤ Suggest specific answers or FAQ entries to address common questions.
+⿥ Recommend new post ideas based on observed needs or missed topics.
+⿦ Optionally, infer strategies based on practices in other Algerian private hospitals and a deeper dive into competitor benchmarks
+And make it in a professional report format pdf in french ready to displayed 
+Format : Rapport professionnel en PDF en français.
+Contact : info@ehp-hasnaoui.com
+Préparé par : Équipe IA
+Date : {datetime.now().strftime('%d/%m/%Y')}
 
 Dataset:
 {json.dumps(posts_and_comments, indent=2, ensure_ascii=False)}
@@ -1335,16 +1344,107 @@ Dataset:
         report_text = result['choices'][0]['message']['content']
         print("\n✅ Strategic Report Generated:\n")
         print(report_text)
-
+        pdf_path = f"strategic_post_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         filename = f"strategic_post_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(report_text)
         print(f"\n📄 Report saved to {filename}")
 
         save_report_to_db(report_text)
-
+        create_pdf_from_markdown(report_text, pdf_path)
+        recipients = ["guendil.yasmine.21@gmail.com"]
+        send_pdf_report_via_email(pdf_path, recipients)
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
-# Run the analysis
+
+def clean_markdown(text):
+    html = markdown2.markdown(text)
+    html = (html
+            .replace('<li>', '• ')
+            .replace('</li>', '<br/>')
+            .replace('<ul>', '')
+            .replace('</ul>', '')
+            .replace('<p>', '')
+            .replace('</p>', '<br/>')
+            .replace('<h1>', '<font size="16" color="#82CBE8"><b>')
+            .replace('</h1>', '</b></font><br/>')
+            .replace('<h2>', '<font size="14" color="#82CBE8"><b>')
+            .replace('</h2>', '</b></font><br/>')
+            .replace('<h3>', '<font size="12" color="#82CBE8"><b>')
+            .replace('</h3>', '</b></font><br/>')
+            .replace('<blockquote>', '<font color="#555555"><i>')
+            .replace('</blockquote>', '</i></font>')
+            .replace('<hr/>', '<br/><hr width="50%" color="#82CBE8"/><br/>')
+            .replace('<em>', '<i>').replace('</em>', '</i>')
+            .replace('<strong>', '<b>').replace('</strong>', '</b>')
+            .replace('<p><i>', '<i>').replace('</i></p>', '</i>') 
+            )
+    return html
+
+def create_pdf_from_markdown(text, output_filename):
+    doc = SimpleDocTemplate(output_filename, pagesize=letter,
+                          rightMargin=50, leftMargin=50,
+                          topMargin=50, bottomMargin=50)
+    
+    styles = getSampleStyleSheet()
+    
+    main_style = ParagraphStyle(
+        name="MainStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        textColor=HexColor("#333333"),
+        spaceAfter=6,
+        alignment=TA_LEFT
+    )
+    
+    header_style = ParagraphStyle(
+        name="HeaderStyle",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=HexColor("#82CBE8"),
+        spaceAfter=12,
+        alignment=TA_CENTER
+    )
+    
+    formatted_text = clean_markdown(text)
+    
+    story = []
+    
+    title = Paragraph("Hasnaoui Hospital Social Media Analysis", header_style)
+    story.append(title)
+    story.append(HRFlowable(width="100%", thickness=1, lineCap='round', 
+                          color=HexColor("#82CBE8"), spaceAfter=20))
+    
+    story.append(Paragraph(formatted_text, main_style))
+    
+    doc.build(story)
+    print(f"Successfully created {output_filename}")
+
+def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Facebook Report", sender_email="medical.visit.gsh@gmail.com", sender_password="mxwtofgnyuuqsxas"):
+    try:
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = sender_email
+        msg['To'] = ', '.join(recipients)
+        msg.set_content("Bonjour,\n\nVeuillez trouver ci-joint le dernier rapport stratégique généré par l’analyse IA des posts et commentaires Facebook.\n\nCordialement.")
+
+        # Attach PDF
+        with open(pdf_path, 'rb') as f:
+            file_data = f.read()
+            file_name = pdf_path.split('/')[-1]
+            msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+        # Setup SMTP
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(sender_email, sender_password)
+            smtp.send_message(msg)
+        print("✅ PDF report sent successfully.")
+
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
+
 if _name_ == "_main_":
     analyze_facebook_comments()
