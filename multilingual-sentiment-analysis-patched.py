@@ -1446,5 +1446,5 @@ def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Face
     except Exception as e:
         print(f"❌ Error sending email: {e}")
 
-if _name_ == "_main_":
+if __name_ == "_main_":
     analyze_facebook_comments()

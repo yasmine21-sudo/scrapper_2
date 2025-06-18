@@ -58,3 +58,4 @@ tqdm==4.67.1
 transformers==4.43.4
 urllib3==2.2.1
 websocket-client==1.7.0
+reportlab==4.4.1
