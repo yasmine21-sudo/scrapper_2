@@ -564,7 +564,7 @@ def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
     }
     
     indicators['question_mark'] = any(
-        mark in cleaned_text for mark in ['?', '؟', '⸮']  # English, Arabic question marks
+        mark in cleaned_text for mark in ['?', '؟', '⸮', '؟']  # English, Arabic question marks
     )
     GLOBAL_QUESTION_WORDS = {
         'what', 'why', 'how', 'when', 'where', 'who', 'which', 'whom', 'whose', 'can', 'could', 'may'
@@ -1210,6 +1210,7 @@ def analyze_facebook_comments():
 
     # Save final results
     save_analysis_results(all_results)
+    save_report_to_db()
     generate_strategic_report_from_posts(df)
     
     print("\nAnalysis completed successfully!")
@@ -1221,7 +1222,24 @@ def get_pg_connection():
     except Exception as e:
         print("❌ PostgreSQL connection error:", e)
         return None
-    
+
+def save_report_to_db(report_text):
+    conn = get_pg_connection()
+    if conn is None:
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO facebook_strategie (report_text) VALUES (%s)",
+                (report_text,)
+            )
+            conn.commit()
+            print("✅ Report enregistré dans la table facebook_strategie.")
+    except Exception as e:
+        print("❌ Erreur lors de l'enregistrement du rapport :", e)
+    finally:
+        conn.close()
+
 def generate_strategic_report_from_posts(df):
     print("\n📊 Generating post-based strategic improvement report...")
 
@@ -1283,7 +1301,7 @@ Please:
 3️⃣ Propose improvements in content strategy and patient interaction.
 4️⃣ Suggest specific answers or FAQ entries to address common questions.
 5️⃣ Recommend new post ideas based on observed needs or missed topics.
-6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals.
+6️⃣ Optionally, infer strategies based on practices in other Algerian private hospitals and a deeper dive into competitor benchmarks
 
 Dataset:
 {json.dumps(posts_and_comments, indent=2, ensure_ascii=False)}
@@ -1323,8 +1341,10 @@ Dataset:
             f.write(report_text)
         print(f"\n📄 Report saved to {filename}")
 
+        save_report_to_db(report_text)
+
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
 # Run the analysis
-if __name__ == "__main__":
+if _name_ == "_main_":
     analyze_facebook_comments()
