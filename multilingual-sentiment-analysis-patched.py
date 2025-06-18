@@ -1353,7 +1353,7 @@ Dataset:
 
         save_report_to_db(report_text)
         create_pdf_from_markdown(report_text, pdf_path)
-        recipients = ["guendil.yasmine.21@gmail.com"]
+        recipients = ["guendil.yasmine.21@gmail.com", "mohammed.benslimane@groupe-hasnaoui.com"]
         send_pdf_report_via_email(pdf_path, recipients)
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
