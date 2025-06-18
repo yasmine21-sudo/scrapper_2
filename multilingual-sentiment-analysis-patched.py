@@ -1,4 +1,8 @@
 import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'  # Suppress TensorFlow warnings
 import tensorflow as tf
 import requests
 from datetime import datetime
@@ -39,9 +43,7 @@ import smtplib
 import json
 import csv
 
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
+
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 warnings.filterwarnings("ignore", category=UserWarning, message="pandas only supports SQLAlchemy connectable.*")
 logging.basicConfig(filename='sentiment_analysis.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1214,7 +1216,6 @@ def analyze_facebook_comments():
 
     # Save final results
     save_analysis_results(all_results)
-    save_report_to_db()
     generate_strategic_report_from_posts(df)
     
     print("\nAnalysis completed successfully!")
