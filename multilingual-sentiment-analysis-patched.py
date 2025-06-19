@@ -574,7 +574,7 @@ def detect_questions(text: str) -> Tuple[bool, Dict[str, bool]]:
     )
     GLOBAL_QUESTION_WORDS = {
         'what', 'why', 'how', 'when', 'where', 'who', 'which', 'whom', 'whose', 'can', 'could', 'may'
-        'quoi', 'pourquoi', 'comment', 'quand', 'où', 'qui est', 'quel', 'peut', 'pourrait'
+        'quoi', 'pourquoi', 'comment', 'quand', 'où', 'qui est', 'quel', 'peut', 'pourrait', 'combien'
         'متى','ماذا', 'لماذا', 'كيف', 'متى', 'أين','هل'
         'من فضلك','علاش','علاه','منين','قداش','واش','وقتاش','اش', 'علاش', 'كيفاش', 'وقتاش', 'وينتا', 'وين', 'شكون'
     }
