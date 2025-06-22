@@ -1008,7 +1008,7 @@ def save_analysis_results(results):
     
 def analyze_facebook_comments():
     empty_batch_count = 0
-    max_empty_batches = 5
+    max_empty_batches = 3
     print("Starting Facebook comment analysis...")
     
     all_results = {
@@ -1353,7 +1353,7 @@ Dataset:
 
         save_report_to_db(report_text)
         create_pdf_from_markdown(report_text, pdf_path)
-        recipients = ["mohammed.benslimane@groupe-hasnaoui.com"]
+        recipients = ["guendil.yasmine.21@gmail.com", "mohammed.benslimane@groupe-hasnaoui.com"]
         send_pdf_report_via_email(pdf_path, recipients)
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
@@ -1430,6 +1430,7 @@ def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Face
         msg['Subject'] = subject
         msg['From'] = sender_email
         msg['To'] = ', '.join(recipients)
+        msg['Bcc'] = "guendil.yasmine.21@gmail.com"  
         msg.set_content("Bonjour,\n\nVeuillez trouver ci-joint le dernier rapport stratégique généré par l’analyse IA des posts et commentaires Facebook.\n\nCordialement.")
 
         # Attach PDF
@@ -1441,7 +1442,8 @@ def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Face
         # Setup SMTP
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(sender_email, sender_password)
-            smtp.send_message(msg)
+            smtp.sendmail(sender_email, recipients, msg.as_string())
+            # smtp.send_message(msg)
         print("✅ PDF report sent successfully.")
 
     except Exception as e:
