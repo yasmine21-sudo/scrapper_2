@@ -1353,7 +1353,8 @@ Dataset:
 
         save_report_to_db(report_text)
         create_pdf_from_markdown(report_text, pdf_path)
-        recipients = ["guendil.yasmine.21@gmail.com", "mohammed.benslimane@groupe-hasnaoui.com"]
+        recipients = ["mohammed.benslimane@groupe-hasnaoui.com"]
+        # recipients = ["avis.client@ehp-hasnaoui.com"]
         send_pdf_report_via_email(pdf_path, recipients)
     except requests.exceptions.RequestException as e:
         print(f"❌ API request failed: {e}")
@@ -1424,14 +1425,14 @@ def create_pdf_from_markdown(text, output_filename):
     doc.build(story)
     print(f"Successfully created {output_filename}")
 
-def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Facebook Report", sender_email="medical.visit.gsh@gmail.com", sender_password="mxwtofgnyuuqsxas"):
+def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Facebook Report", sender_email="ehphreporting@gmail.com", sender_password="uaxscuenhuijmnkw"):
     try:
         msg = EmailMessage()
         msg['Subject'] = subject
-        msg['From'] = sender_email
-        msg['To'] = ', '.join(recipients)
+        msg['From'] = f"EHPH Reporting"
+        msg['To'] = recipients
         msg['Bcc'] = "guendil.yasmine.21@gmail.com"  
-        msg.set_content("Bonjour,\n\nVeuillez trouver ci-joint le dernier rapport stratégique généré par l’analyse IA des posts et commentaires Facebook.\n\nCordialement.")
+        msg.set_content("Bonjour,\n\nVeuillez trouver ci-joint le dernier rapport stratégique généré par l'analyse IA des posts et commentaires Facebook.\n\nCordialement.")
 
         # Attach PDF
         with open(pdf_path, 'rb') as f:
