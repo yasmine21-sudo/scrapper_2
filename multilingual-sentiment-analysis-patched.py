@@ -1353,7 +1353,7 @@ Dataset:
 
         save_report_to_db(report_text)
         create_pdf_from_markdown(report_text, pdf_path)
-        recipients = ["mohammed.benslimane@groupe-hasnaoui.com"]
+        recipients = ["mohammed.benslimane@groupe-hasnaoui.com", "guendil.yasmine.21@gmail.com"]
         # recipients = ["avis.client@ehp-hasnaoui.com"]
         send_pdf_report_via_email(pdf_path, recipients)
     except requests.exceptions.RequestException as e:
@@ -1430,8 +1430,8 @@ def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Face
         msg = EmailMessage()
         msg['Subject'] = subject
         msg['From'] = f"EHPH Reporting"
-        msg['To'] = recipients
-        msg['Bcc'] = "guendil.yasmine.21@gmail.com"  
+        msg['To'] = ', '.join(recipients)
+        msg['Bcc'] = "guendil.yasmine.21@gmail.com"
         msg.set_content("Bonjour,\n\nVeuillez trouver ci-joint le dernier rapport stratégique généré par l'analyse IA des posts et commentaires Facebook.\n\nCordialement.")
 
         # Attach PDF
