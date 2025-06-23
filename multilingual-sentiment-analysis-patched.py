@@ -1438,7 +1438,7 @@ def send_pdf_report_via_email(pdf_path, recipients, subject="📊 Strategic Face
         with open(pdf_path, 'rb') as f:
             file_data = f.read()
             file_name = pdf_path.split('/')[-1]
-            file_name = f'Rapport RP management EHPH ({}){datetime.now().strftime("%Y-%m-%d")}).pdf'
+            file_name = f'Rapport RP management EHPH ({datetime.now().strftime("%Y-%m-%d")}).pdf'
             msg.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
 
         # Setup SMTP
